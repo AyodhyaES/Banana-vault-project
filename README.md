@@ -1,20 +1,22 @@
 # 🍌 Banana Mystery Vault
 
-An interactive mystery puzzle game powered by the Banana API, built using Node.js, Express.js and MongoDB.
+An interactive mystery puzzle adventure game powered by the Banana API. Developed using HTML5, CSS3, JavaScript, Node.js, Express.js and MongoDB.
 
-## Features
+**Live Frontend:** https://ayodhyaes.github.io/Banana-vault-project/
+
+## ✨ Features
 
 - Username and password registration and login
 - Secure password hashing using bcrypt
 - Unique Explorer ID and avatar selection
 - Three adventure levels
-- Coins, lives, hints and keys
+- Coins, lives, hints and collectible keys
 - Player progress saving using MongoDB
 - Player leaderboard
 - Live Banana API puzzle integration
 - Local practice puzzles when the API is unavailable
 
-## Technologies Used
+## 🛠️ Technologies Used
 
 - HTML5
 - CSS3
@@ -26,33 +28,43 @@ An interactive mystery puzzle game powered by the Banana API, built using Node.j
 - Banana API
 - JWT Authentication
 
-## Installation and Setup
+## 🚀 Installation and Setup
 
-### 1. Clone or download the project
+### 1. Clone the repository
+
+bash
+git clone https://github.com/AyodhyaES/Banana-vault-project.git
+
+
+Navigate into the project folder:
+
+bash
+cd Banana-vault-project
+
 
 ### 2. Install dependencies
 
-  bash
+bash
 npm install
 
 
 ### 3. Configure environment variables
 
-Copy `.env.example` to `.env`.
+Copy .env.example to .env.
 
-Windows PowerShell:
+**Windows PowerShell:**
 
 powershell
 Copy-Item .env.example .env
 
 
-Mac/Linux:
+**Mac/Linux:**
 
 bash
 cp .env.example .env
 
 
-Add your configuration to `.env`:
+Configure your .env file:
 
 env
 PORT=3000
@@ -60,14 +72,11 @@ MONGODB_URI=mongodb://127.0.0.1:27017/banana_vault
 JWT_SECRET=your_private_secret
 
 
-Use your own secure JWT secret. Never upload .env to GitHub.
+Use your own secure JWT secret. Never upload `.env` to GitHub.
 
 ### 4. Configure MongoDB
 
-Choose one:
-
-- **MongoDB Atlas:** Create a free cluster, configure database access and network access, and add your connection string to .env.
-- **Local MongoDB:** Install MongoDB Community Server and start the MongoDB service.
+Use MongoDB Community Server locally or configure MongoDB Atlas with your own connection string.
 
 ### 5. Start the application
 
@@ -75,7 +84,7 @@ bash
 npm start
 
 
-Open:
+Open the application:
 
 http://localhost:3000
 
@@ -83,17 +92,18 @@ Check the database connection:
 
 http://localhost:3000/api/health
 
-A successful response should look like:
-    json
+Expected response:
+
+```json
 {
   "ok": true,
   "db": true
 }
+```
 
+## 🗄️ Database Information
 
-## Database Information
-
-The application stores:
+MongoDB stores:
 
 - Username and username key
 - Hashed password
@@ -101,24 +111,30 @@ The application stores:
 - Coins, lives and score
 - Hints and collected keys
 - Unlocked and completed levels
-- Best scores or times
+- Best scores and times
 - Account creation and update dates
 
-## API Integration
+## 🔌 API Integration
 
-The game uses the Banana API to retrieve puzzle questions through the Express backend. Local practice puzzles are available when the external API is unavailable.
+The game retrieves puzzle questions through the Banana API using the Express backend. Local practice puzzles are also available when the external API is unavailable.
 
-## Security
+## 🔐 Security
 
 - Passwords are hashed using bcrypt.
 - Authentication uses signed HTTP-only cookies.
 - Environment variables are kept outside the public repository.
 - Password hashes are never sent to the browser.
 
-## Author
+## 🌐 Deployment
+
+The frontend is published using GitHub Pages.
+
+The Node.js and Express backend requires a running server, and MongoDB requires an accessible database connection.
+
+## 👩‍💻 Author
 
 Developed as an individual software development project.
 
-## License
+## 📄 License
 
-Add your chosen open-source license here if you intend to distribute the project under one.
+No open-source license has been selected yet.
