@@ -1,9 +1,11 @@
 // Banana API helper: puzzles are fetched here, the solution stays on the server.
 const crypto = require('crypto');
-const API = process.env.BANANA_API_URL || 'https://marcconrad.com/uob/banana/api.php?out=json';
+const API = process.env.BANANA_API_URL || 
+'https://marcconrad.com/uob/banana/api.php?out=json'; //External API endpoint
 const TTL = 10 * 60 * 1000;
 const puzzles = new Map();                       // id -> { solution, expires }
 
+//Fetching puzzle data
 async function fetchBanana() {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
   try {
@@ -15,7 +17,16 @@ async function fetchBanana() {
     return { question: d.question, solution };
   } finally { clearTimeout(timer); }
 }
-const store = solution => { const id = crypto.randomUUID(); puzzles.set(id, { solution, expires: Date.now() + TTL }); return id; };
+
+//Storing the puzzle
+const store = solution => {
+   const id = crypto.randomUUID(); 
+   puzzles.set(id, { 
+    solution, 
+    expires: Date.now() + TTL 
+  }); 
+  return id; 
+};
 
 // A game puzzle: the browser gets only { id, imageUrl }.
 async function newPuzzle() { const p = await fetchBanana(); return { id: store(p.solution), imageUrl: p.question }; }

@@ -1,6 +1,6 @@
 // Username/password authentication, player progress and leaderboard.
 
-const express = require('express');
+const express = require('express'); //Import authentication libraries
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -67,6 +67,7 @@ const auth = async (req, res, next) => {
   }
 };
 
+// JWT session management
 const setSession = (res, user) => {
   const token = jwt.sign(
     { id: user._id.toString() },
@@ -144,7 +145,8 @@ router.post('/register', dbUp, async (req, res) => {
   }
 });
 
-// LOGIN
+// LOGIN 
+//Authentication middleware
 router.post('/login', dbUp, async (req, res) => {
   try {
     const username = String(req.body.username || '').trim();
