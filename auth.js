@@ -9,17 +9,18 @@ const { mongoose, User } = require('./db');
 
 const router = express.Router();
 
+//JWT Secret and Cookie Configuration
 const SECRET = process.env.JWT_SECRET || 'change-this-jwt-secret';
 
 const COOKIE = {
-  httpOnly: true,
-  sameSite: 'lax',
-  secure: process.env.NODE_ENV === 'production',
-  maxAge: 7 * 24 * 60 * 60 * 1000
+  httpOnly: true,   //Prevents JavaScript from accessing the cookie.
+  sameSite: 'lax', //Helps protect against cross-site request attacks.
+  secure: process.env.NODE_ENV === 'production', //Sends cookies over HTTPS in production.
+  maxAge: 7 * 24 * 60 * 60 * 1000 //Sets the cookie lifetime to seven days.
 };
 
 // Public player information.
-// Never send the password hash to the browser.
+
 const pub = u => ({
   username: u.username,
   name: u.username,
@@ -36,6 +37,7 @@ const pub = u => ({
   best: u.best || {}
 });
 
+//Dtabase  connection middleware
 const dbUp = (req, res, next) => {
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
@@ -45,6 +47,7 @@ const dbUp = (req, res, next) => {
   next();
 };
 
+// Authentication Middleware
 const auth = async (req, res, next) => {
   try {
     const token = req.cookies && req.cookies.token;
@@ -67,7 +70,8 @@ const auth = async (req, res, next) => {
   }
 };
 
-// JWT session management
+// JWT session management 
+// Creates a JWT using the player's database ID and stores it in a cookie.
 const setSession = (res, user) => {
   const token = jwt.sign(
     { id: user._id.toString() },
@@ -78,6 +82,7 @@ const setSession = (res, user) => {
   return res.cookie('token', token, COOKIE);
 };
 
+//Health Check Route
 router.get('/health', (req, res) => {
   res.json({
     ok: true,
@@ -85,7 +90,7 @@ router.get('/health', (req, res) => {
   });
 });
 
-// REGISTER
+// Registration route
 router.post('/register', dbUp, async (req, res) => {
   try {
     const username = String(req.body.username || '').trim();
@@ -145,8 +150,7 @@ router.post('/register', dbUp, async (req, res) => {
   }
 });
 
-// LOGIN 
-//Authentication middleware
+// LOGIN route
 router.post('/login', dbUp, async (req, res) => {
   try {
     const username = String(req.body.username || '').trim();
@@ -184,7 +188,7 @@ router.get('/me', dbUp, auth, (req, res) => {
   });
 });
 
-// LOGOUT
+// LOGOUT -Clears the authentication cookie when the player logs out.
 router.post('/logout', (req, res) => {
   res.clearCookie('token').json({ ok: true });
 });
