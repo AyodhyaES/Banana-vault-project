@@ -858,6 +858,54 @@ pages.login=()=>`
         <span>❤️ 3 Lives</span>
     </div>
 `;
+
+/* -------- REGISTRATION PAGE -------- */
+
+pages.register = () => `
+    <section class="scene" ${bg(0, IMG2.reg)}>
+        <div class="gc">
+
+            <img class="crest" src="${IMG2.crest}" alt="">
+
+            <h2 class="script">Create Account</h2>
+
+            <p>Join the Banana Mystery Vault adventure!</p>
+
+            ${fld('👤', 'un', 'Username', 'text')}
+
+            ${fld('🔒', 'pw', 'Password', 'password')}
+
+            ${fld(
+                '🔒',
+                'pw2',
+                'Confirm Password',
+                'password',
+                `onkeydown="if(event.key=='Enter')register()"`
+            )}
+
+            <div class="bt">
+                <label>
+                    <input type="checkbox" id="tc">
+                    I accept the Terms & Privacy Policy.
+                </label>
+            </div>
+
+            <button class="wide" onclick="register()">
+                Create Account
+            </button>
+
+            <div class="or">— OR —</div>
+
+            <button class="ghost wide" onclick="go('login')">
+                Already have an account? Login
+            </button>
+
+            <div class="msg" id="msg">${S.msg}</div>
+
+        </div>
+    </section>
+`;
+
 /* ---- LOAD PUZZLE ---- */
 async function loadPuzzle(){
      // Reset the current puzzle
