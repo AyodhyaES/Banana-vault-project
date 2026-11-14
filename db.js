@@ -68,6 +68,9 @@ userSchema.index(
   }
 );
 
+// Every Explorer ID must be unique.
+userSchema.index({ explorerId: 1 }, { unique: true });
+
 module.exports = {
   mongoose,
   User: mongoose.model('User', userSchema)

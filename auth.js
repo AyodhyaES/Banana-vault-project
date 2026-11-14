@@ -119,7 +119,11 @@ router.post('/register', dbUp, async (req, res) => {
       });
     }
 
-    const explorerId = 'BMV-' + crypto.randomInt(10000, 100000);
+    // Explorer ID: pick a random number until no other player has it.
+    let explorerId;
+    do {
+      explorerId = 'BMV-' + crypto.randomInt(10000, 100000);
+    } while (await User.exists({ explorerId }));
 
     const user = await User.create({
       username,

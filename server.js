@@ -10,6 +10,32 @@ const app = express();//Creates the Express application.
 app.use(express.json()); //reads JSON data sent by the frontend.
 app.use(require('cookie-parser')()); //reads cookies from incoming requests.
 app.use(express.static(path.join(__dirname, 'public'))); //serves frontend files from the public folder.
+// Sign-up limit: at most 10 sign-up attempts per IP number in 10 minutes.
+// The IP numbers are kept only in memory for the 10 minutes and are never saved.
+const SIGNUP_MAX = 10, SIGNUP_WINDOW = 10 * 60 * 1000;
+const signups = new Map(); // ip -> list of attempt times
+
+app.post('/api/register', (req, res, next) => {
+  const now = Date.now();
+  const recent = (signups.get(req.ip) || []).filter(t => now - t < SIGNUP_WINDOW);
+
+  if (recent.length >= SIGNUP_MAX)
+    return res.status(429).json({
+      error: 'Too many sign-up attempts. Please try again in a few minutes.'
+    });
+
+  recent.push(now);
+  signups.set(req.ip, recent);
+  next();
+});
+
+// Forget old IP numbers every minute.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, times] of signups)
+    if (times.every(t => now - t >= SIGNUP_WINDOW)) signups.delete(ip);
+}, 60000).unref();
+
 app.use('/api', require('./auth'));      // accounts, progress, leaderboard (MongoDB)
 
 // 1) Browser asks for a puzzle: only { id, imageUrl } is sent, never the solution.

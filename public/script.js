@@ -1209,14 +1209,35 @@ function makePuzzle(){
         grid:g
     };
    }
-  }
- }
+  } // End of digit loop
+ }  // End of attempts loop
+
   // Fallback puzzle if a valid puzzle cannot be generated
- const b=R(2,9);
-    return{
-        ans:b,
-        q:`🍌 + 🍌 + 🍌 = ${3*b}<br>🍌 = ?`
-    };
+  const b=R(2,9);
+  return{
+    ans:b,
+    q:`🍌 + 🍌 + 🍌 = ${3*b}<br>🍌 = ?`
+  };
+}// End of makePuzzle()
+
+// Display the generated puzzle (Banana API image or local equation)
+function puzHTML(){
+    if(!S.p)return '<p class="center">Loading puzzle…</p>';
+    if(S.p.img)
+        return `<div class="bp-frame">
+            <div class="bp-label">🍌 Banana Puzzle</div>
+            <div class="bp-hint">Find the missing number</div>
+            <div class="bp-img"><img src="${S.p.img}" alt="Banana puzzle" onerror="bananaImgFail()"></div>
+        </div>`;
+    return S.p.q;
+}
+
+// If the Banana image cannot be shown, switch to a local puzzle
+function bananaImgFail(){
+    if(!S.p||!S.p.img)return;
+    S.p=makePuzzle(S.lvl.n);
+    toast('Could not load the Banana image — using a local puzzle.','bad');
+    render();
 }
 
 /*---------TIMER FUNCTIONS--------*/
@@ -1288,6 +1309,27 @@ function startLevel(n){
     loadPuzzle();  // Load the first puzzle
 }
 
+/*------------------- BANANA API PUZZLE ---------*/
+// Banana API: returns { question: <image url>, solution: <digit> }
+const BANANA_URL='https://marcconrad.com/uob/banana/api.php?out=json';
+
+async function fetchBanana(){
+    const ctl=new AbortController();
+    const to=setTimeout(()=>ctl.abort(),6000);   // do not wait forever
+    try{
+        const r=await fetch(BANANA_URL+'&t='+Date.now(),{signal:ctl.signal});
+        if(!r.ok)throw 0;
+        const d=await r.json();
+        const ans=Number(d.solution);
+        if(!d.question||!Number.isInteger(ans))throw 0;
+        return{
+            img:String(d.question).replace(/^http:/,'https:'),
+            ans,
+            banana:true
+        };
+    }finally{clearTimeout(to)}
+}
+
 /*------------------- LOAD A PUZZLE---------*/
 async function loadPuzzle(){
     S.p=null; // Clear the current puzzle
@@ -1296,17 +1338,20 @@ async function loadPuzzle(){
     render(); // Display the puzzle loading state
 
     try{
-        const r=await fetch('/api/puzzle'); // Request a puzzle from the backend API
-        if(!r.ok)throw 0;  // Check whether the request was successful
-        const d=await r.json(); // Convert the response into JSON
-        if(!d.id||!d.imageUrl)throw 0;  // Validate the received puzzle information
-        S.p={  // Store the puzzle ID and image URL
-            id:d.id,
-            img:d.imageUrl
+        // 1) Your own backend, if it is running
+        const r=await fetch('/api/puzzle');
+        if(!r.ok)throw 0;
+        const d=await r.json();
+        if(!d.id||!d.imageUrl)throw 0;
+        S.p={id:d.id,img:d.imageUrl};
+    }catch(e){
+        try{
+            // 2) The Banana API directly
+            S.p=await fetchBanana();
+        }catch(e2){
+            // 3) Local puzzle if both fail
+            S.p=makePuzzle(S.lvl.n);
         }
-    }
-    catch(e){
-        S.p=makePuzzle(S.lvl.n) // Generate a local puzzle if the API fails
     }
     S.t=TLIM; // Set the countdown to 45 seconds
     render(); // Display the loaded puzzle
@@ -2261,5 +2306,7 @@ addEventListener('hashchange',()=>{
     if(S.api&&['#leaderboard','#dashboard'].includes(location.hash))
         loadBoard()
     });
+
+
 render();
 init();
