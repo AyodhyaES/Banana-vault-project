@@ -40,6 +40,20 @@ const userSchema = new mongoose.Schema({
     max: 5
   },
 
+  // Two-factor login (authenticator app, TOTP)
+  twoFactorSecret: { type: String, default: '' },
+  twoFactorEnabled: { type: Boolean, default: false },
+  twoFactorLastStep: { type: Number, default: 0 },   // stops a code being used twice
+
+  // Email verification (accounts made before this feature count as verified)
+  email: { type: String, trim: true, maxlength: 254 },
+  emailKey: { type: String },                          // lower-case copy for lookups
+  emailVerified: { type: Boolean, default: true },
+  emailCodeHash: { type: String, default: '' },        // the code is saved scrambled
+  emailCodeExpires: { type: Number, default: 0 },
+  emailCodeTries: { type: Number, default: 0 },
+  emailCodeSentAt: { type: Number, default: 0 },
+
   coins: { type: Number, default: 20 },
   lives: { type: Number, default: 3 },
   score: { type: Number, default: 0 },
@@ -65,6 +79,26 @@ userSchema.index(
     partialFilterExpression: {
       usernameKey: { $type: 'string' }
     }
+  }
+);
+
+// Unique email address, ignoring uppercase/lowercase differences.
+userSchema.index(
+  { emailKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      emailKey: { $type: 'string' }
+    }
+  }
+);
+
+// Sign-ups that are never verified are deleted automatically after 24 hours.
+userSchema.index(
+  { createdAt: 1 },
+  {
+    expireAfterSeconds: 24 * 60 * 60,
+    partialFilterExpression: { emailVerified: false }
   }
 );
 

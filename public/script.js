@@ -1,3 +1,13 @@
+/* =====================================================================
+   APIs used in this project
+   1. Banana API (https://marcconrad.com/uob/banana/doc.php) - interoperability.
+      The Express server (banana.js) calls it, keeps the solution secret and sends
+      this script only { id, imageUrl }. See loadPuzzle(), submit() and hint().
+   2. Web Audio API (built into the browser) - AudioContext, oscillators and gain
+      nodes make the banana win sound and the other sound effects.
+      See ac(), tone() and winSound().
+   ===================================================================== */
+
 // Banana Mystery Vault - game logic (pages, puzzles, timer, sound, login, MongoDB sync)
 // Image path configuration
 const IMG2={
@@ -28,7 +38,7 @@ const save=()=>{try{localStorage.setItem('bmv2',JSON.stringify(DB))}catch(e){}sy
 const U=()=>DB.users[DB.cur];
 
 //Page Navigation
-const go=h=>{location.hash=h};
+const go=h=>{S.tf=null;S.vf=null;S.tfSetup=null;S.tfOff=false;location.hash=h};
 
 //Game level congiguarion 
 const LV=[
@@ -402,6 +412,7 @@ const pages={
                     :''
                 }
             </div>
+            ${S.api?securityCard(u):''}
         `;
     },
     
@@ -553,7 +564,7 @@ const pages={
             rev=Math.floor(S.solved/l.per),
             
             bn=`
-                <div class="banner" 
+                <div class="banner sm" 
                 style="background-image:linear-gradient(#0000,#0d0a14f0),url(${IMG.l[l.n-1]})">
                 
                 <h3>Level ${l.n} — ${l.name}</h3>
@@ -623,33 +634,7 @@ const pages={
                 </div>
             `;
             //Main gameplay screen
-            let h=`
-                <div class="card">
-                    ${bn}
-                    ${stats()}
-                <div class="prog" style="margin-top:10px">
-                    <div style="width:${S.solved/l.total*100}%"></div>
-                </div>
-                
-                <small>Solved ${S.solved} / ${l.total} 
-                · Time <b id="el">${fmt(S.el||0)}</b>
-                </small>
-                
-                ${S.phase=='puzzle'?`
-                    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-                        <span>Time left</span>
-                        
-                        <b id="tm" style="color:var(--gold);min-width:3ch">
-                        ${fmt(Math.max(S.t??TLIM,0))}
-                        </b>
-
-                        <div class="prog" style="flex:1">
-                            <div id="tb" 
-                                style="width:${Math.max(S.t??TLIM,0)/TLIM*100}%">
-                            </div>
-                        </div>
-                    </div>
-                `:''}
+            const pinHTML=`
                 <div class="pin">
                     ${S.pin.map((_,i)=>`
                         <div class="slot ${i<rev?'on':''}">
@@ -657,27 +642,66 @@ const pages={
                         </div>
                     `).join('')}
                 </div>
+            `,
+            solvedHTML=`
+                <small class="solved">Solved ${S.solved} / ${l.total}
+                · Time <b id="el">${fmt(S.el||0)}</b></small>
+                <div class="prog thin">
+                    <div style="width:${S.solved/l.total*100}%"></div>
+                </div>
+            `,
+            puzzle=S.phase=='puzzle';
+
+            // The puzzle, the countdown and the answer box are all on one screen
+            let h=`
+                <div class="card play">
+                    ${puzzle?`
+                        <div class="play-head">
+                            <h3>Level ${l.n} — ${l.name}</h3>
+                            <button class="ghost sm" onclick="go('dashboard')">← Dashboard</button>
+                        </div>
+                    `:bn}
+                    <div class="play-top">
+                        ${stats()}
+                        ${puzzle?`
+                            <div class="timebox">
+                                <span>⏱ Time left</span>
+                                <b id="tm">${fmt(Math.max(S.t??TLIM,0))}</b>
+                                <div class="prog">
+                                    <div id="tb" style="width:${Math.max(S.t??TLIM,0)/TLIM*100}%"></div>
+                                </div>
+                            </div>
+                        `:''}
+                    </div>
+                    ${solvedHTML}
             `;
+            if(!puzzle)h+=pinHTML;
             //Puzzle phase
             if(S.phase=='puzzle')
                 h+=`
-                    ${puzHTML()}
-                    ${S.hintTxt?`
-                        <div class="center">${S.hintTxt}</div>
-                    `:''}
-                    <input 
-                        id="ans" 
-                        type="number" 
-                        inputmode="numeric" 
-                        placeholder="Your answer" 
-                        onkeydown="if(event.key=='Enter')submit()"
-                    >
-                    <div class="row c">
-                        <button onclick="submit()">Submit</button>
-                        <button class="ghost" onclick="hint()">
-                            💡 Hint (free or 5 <i class=co></i>)
-                        </button><button class="ghost" onclick="buyLife()">
-                            ❤️ Life (20 <i class=co></i>)</button>
+                    <div class="play-grid">
+                        <div class="play-left">${puzHTML()}</div>
+                        <div class="play-right">
+                            ${pinHTML}
+                            ${S.hintTxt?`<div class="center">${S.hintTxt}</div>`:''}
+                            <input
+                                id="ans"
+                                type="number"
+                                inputmode="numeric"
+                                placeholder="Your answer"
+                                onkeydown="if(event.key=='Enter')submit()"
+                            >
+                            <div class="row c">
+                                <button onclick="submit()">Submit</button>
+                                <button class="ghost" onclick="hint()">
+                                    💡 Hint <span class="cost">(free or 5 <i class=co></i>)</span>
+                                </button>
+                                <button class="ghost" onclick="buyLife()">
+                                    ❤️ Life <span class="cost">(20 <i class=co></i>)</span>
+                                </button>
+                            </div>
+                            <div class="msg" id="msg">${S.msg}</div>
+                        </div>
                     </div>
                 `;
                 // Treasure chest phase
@@ -712,11 +736,10 @@ const pages={
                         </div>
                     `;
                 }
-                return h+`
+                return h+(puzzle?'':`
                     <div class="msg" id="msg">${S.msg}</div>
-                        ${back}
-                    </div>
-                `;
+                    ${back}
+                `)+`</div>`;
             }
 };
 
@@ -818,7 +841,35 @@ pages.home=c=>`
 `;
 
 /* ---- LOGIN PAGE ---- */
-pages.login=()=>`
+// Second step of the login: the 6-digit code from the authenticator app
+const loginCodeStep=()=>`
+    <section class="scene" ${bg(0,IMG2.login)}>
+        <div class="gc">
+            <img class="crest" src="${IMG2.crest}" alt="">
+            <h2 class="script">Two-Step Check</h2>
+            <p style="margin:0 0 8px">
+                Enter the 6-digit code from your authenticator app
+            </p>
+            ${fld(
+                '🔑',
+                'code',
+                '6-digit code',
+                'text',
+                `inputmode="numeric" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key=='Enter')login2fa()"`
+            )}
+            <button class="wide" onclick="login2fa()">
+                ✔ Verify and Login
+            </button>
+            <button class="ghost wide" onclick="cancel2fa()">
+                ← Back
+            </button>
+            <small>The code changes every 30 seconds</small>
+            <div class="msg" id="msg"></div>
+        </div>
+    </section>
+`;
+
+pages.login=()=>S.tf?loginCodeStep():S.vf?verifyStep():`
     <section class="scene" ${bg(0,IMG2.login)}>
         <div class="gc">
             <img class="crest" src="${IMG2.crest}" alt="">
@@ -861,7 +912,7 @@ pages.login=()=>`
 
 /* -------- REGISTRATION PAGE -------- */
 
-pages.register = () => `
+pages.register = () => S.vf ? verifyStep() : `
     <section class="scene" ${bg(0, IMG2.reg)}>
         <div class="gc">
 
@@ -872,6 +923,8 @@ pages.register = () => `
             <p>Join the Banana Mystery Vault adventure!</p>
 
             ${fld('👤', 'un', 'Username', 'text')}
+
+            ${S.api?fld('✉️', 'em', 'Email address', 'email'):''}
 
             ${fld('🔒', 'pw', 'Password', 'password')}
 
@@ -1309,27 +1362,6 @@ function startLevel(n){
     loadPuzzle();  // Load the first puzzle
 }
 
-/*------------------- BANANA API PUZZLE ---------*/
-// Banana API: returns { question: <image url>, solution: <digit> }
-const BANANA_URL='https://marcconrad.com/uob/banana/api.php?out=json';
-
-async function fetchBanana(){
-    const ctl=new AbortController();
-    const to=setTimeout(()=>ctl.abort(),6000);   // do not wait forever
-    try{
-        const r=await fetch(BANANA_URL+'&t='+Date.now(),{signal:ctl.signal});
-        if(!r.ok)throw 0;
-        const d=await r.json();
-        const ans=Number(d.solution);
-        if(!d.question||!Number.isInteger(ans))throw 0;
-        return{
-            img:String(d.question).replace(/^http:/,'https:'),
-            ans,
-            banana:true
-        };
-    }finally{clearTimeout(to)}
-}
-
 /*------------------- LOAD A PUZZLE---------*/
 async function loadPuzzle(){
     S.p=null; // Clear the current puzzle
@@ -1338,20 +1370,15 @@ async function loadPuzzle(){
     render(); // Display the puzzle loading state
 
     try{
-        // 1) Your own backend, if it is running
+        // Banana API puzzle through the Express server (the server keeps the solution)
         const r=await fetch('/api/puzzle');
         if(!r.ok)throw 0;
         const d=await r.json();
         if(!d.id||!d.imageUrl)throw 0;
         S.p={id:d.id,img:d.imageUrl};
     }catch(e){
-        try{
-            // 2) The Banana API directly
-            S.p=await fetchBanana();
-        }catch(e2){
-            // 3) Local puzzle if both fail
-            S.p=makePuzzle(S.lvl.n);
-        }
+        // If the API cannot be reached, use a local practice puzzle
+        S.p=makePuzzle(S.lvl.n);
     }
     S.t=TLIM; // Set the countdown to 45 seconds
     render(); // Display the loaded puzzle
@@ -2026,6 +2053,224 @@ function pickAv(i){
 )}
 
 // Handles player login.
+/* ---------- Email verification at sign-up ---------- */
+
+// Simple email check (same rule as the server)
+const EMAIL_OK=e=>/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(e)&&e.length<=254;
+
+// Screen where the player types the 6-digit code from the email
+const verifyStep=()=>`
+    <section class="scene" ${bg(0,IMG2.reg)}>
+        <div class="gc">
+            <img class="crest" src="${IMG2.crest}" alt="">
+            <h2 class="script">Check Your Email</h2>
+            <p style="margin:0 0 8px">
+                ${S.vf.fromLogin
+                    ?`Your email is not verified yet.<br>Press “Send a new code”, then check <b>${S.vf.email}</b>`
+                    :`We sent a 6-digit code to<br><b>${S.vf.email}</b>`}
+            </p>
+            ${fld(
+                '✉️',
+                'vcode',
+                '6-digit code',
+                'text',
+                `inputmode="numeric" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key=='Enter')verifyEmail()"`
+            )}
+            <button class="wide" onclick="verifyEmail()">
+                ✔ Verify and Continue
+            </button>
+            <button class="ghost wide" onclick="resendCode()">
+                Send a new code
+            </button>
+            <button class="ghost wide" onclick="cancelVerify()">
+                ← Back
+            </button>
+            <small>The code works for 10 minutes</small>
+            <div class="msg" id="msg">${S.msg}</div>
+        </div>
+    </section>
+`;
+
+// Sends the code to the server; on success the player is logged in
+async function verifyEmail(){
+    const code=($('vcode').value||'').replace(/\s/g,'');
+    if(!/^\d{6}$/.test(code))
+        return toast('Enter the 6-digit code.','bad');
+    try{
+        const{ok,d}=await apiPost('/api/verify-email',{
+            username:S.vf.u,
+            password:S.vf.pw,
+            code
+        });
+        if(!ok||!d.user)
+            return toast(d.error||'Wrong code.','bad');
+        S.vf=null;
+        finishLogin(d.user);
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+// Asks the server to email a new code
+async function resendCode(){
+    try{
+        const{ok,d}=await apiPost('/api/resend-code',{
+            username:S.vf.u,
+            password:S.vf.pw
+        });
+        if(!ok)
+            return toast(d.error||'Could not send a new code.','bad');
+        S.vf.fromLogin=false;
+        toast('A new code was sent ✉️','good');
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+function cancelVerify(){
+    S.vf=null;
+    S.msg='';
+    render();
+}
+
+/* ---------- Two-step login: set up / turn off (dashboard) ---------- */
+
+// The "Security" card on the dashboard
+const securityCard=u=>{
+    let body;
+    if(u.twoFactor&&!S.tfOff){
+        body=`
+            <p>🔒 Two-step login is <b class="good">ON</b>.
+            After your password, the game asks for a code from your authenticator app.</p>
+            <button class="ghost" onclick="tfAskOff()">Turn off</button>
+        `;
+    }else if(u.twoFactor){
+        body=`
+            <p>To turn it off, enter your password and a current code.</p>
+            ${fld('🔒','tfpw','Password','password')}
+            ${fld('🔑','tfcode','6-digit code','text','inputmode="numeric" maxlength="6" autocomplete="one-time-code"')}
+            <div class="row c">
+                <button onclick="tfOff()">Turn off</button>
+                <button class="ghost" onclick="tfCancel()">Cancel</button>
+            </div>
+        `;
+    }else if(S.tfSetup){
+        const t=S.tfSetup;
+        body=`
+            <ol class="tf-steps">
+                <li>Open an authenticator app (Google Authenticator, Microsoft Authenticator or Authy).</li>
+                <li>Add a new account ${t.qr?'and scan this QR code':'and choose “Enter a setup key”'}:
+                    ${t.qr?`<div class="tf-qr"><img src="${t.qr}" alt="QR code"></div>`:''}
+                    <div class="tf-key">${t.secret.match(/.{1,4}/g).join(' ')}</div>
+                </li>
+                <li>Type the 6-digit code that the app shows:</li>
+            </ol>
+            ${fld('🔑','tfcode','6-digit code','text','inputmode="numeric" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key==\'Enter\')tfConfirm()"')}
+            <div class="row c">
+                <button onclick="tfConfirm()">✔ Turn on</button>
+                <button class="ghost" onclick="tfCancel()">Cancel</button>
+            </div>
+        `;
+    }else{
+        body=`
+            <p>Add a second lock to your account. After your password, the game
+            asks for a 6-digit code from an authenticator app on your phone.</p>
+            <button onclick="tfStart()">🔐 Turn on two-step login</button>
+        `;
+    }
+    return`
+        <h2>Security</h2>
+        <div class="card">
+            <h3 style="margin-top:0">Two-step login</h3>
+            ${body}
+            <div class="msg" id="msg">${S.msg}</div>
+        </div>
+    `;
+};
+
+// Asks the server for a new secret key and shows it
+async function tfStart(){
+    try{
+        const{ok,d}=await apiPost('/api/2fa/setup',{});
+        if(!ok)return toast(d.error||'Could not start the set-up.','bad');
+        S.tfSetup=d;
+        S.msg='';
+        render();
+    }catch(e){toast('Could not reach the server.','bad')}
+}
+
+// Checks the first code and turns two-step login on
+async function tfConfirm(){
+    const code=($('tfcode').value||'').replace(/\s/g,'');
+    try{
+        const{ok,d}=await apiPost('/api/2fa/enable',{code});
+        if(!ok)return toast(d.error||'That code is not correct.','bad');
+        U().twoFactor=true;
+        S.tfSetup=null;
+        save();
+        toast('Two-step login is ON ✅','good');
+        render();
+    }catch(e){toast('Could not reach the server.','bad')}
+}
+
+function tfAskOff(){S.tfOff=true;S.msg='';render()}
+function tfCancel(){S.tfSetup=null;S.tfOff=false;S.msg='';render()}
+
+// Turns two-step login off (needs the password and a current code)
+async function tfOff(){
+    const password=$('tfpw').value,
+    code=($('tfcode').value||'').replace(/\s/g,'');
+    try{
+        const{ok,d}=await apiPost('/api/2fa/disable',{password,code});
+        if(!ok)return toast(d.error||'Wrong password or code.','bad');
+        U().twoFactor=false;
+        S.tfOff=false;
+        save();
+        toast('Two-step login is OFF.','good');
+        render();
+    }catch(e){toast('Could not reach the server.','bad')}
+}
+
+/* ---------- Two-factor login (authenticator app code) ---------- */
+
+// Saves the logged-in player and opens the dashboard.
+function finishLogin(user){
+    const m=mk(user);
+    DB.users[m.key]=m; // Stores the player information locally.
+    DB.cur=m.key; // Sets the current logged-in player.
+    save(); // Saves the updated local data.
+    S.msg='';
+    S.tf=null;
+    go('dashboard');
+    render();
+}
+
+// Second login step: sends the password again together with the 6-digit code.
+async function login2fa(){
+    const code=($('code').value||'').replace(/\s/g,'');
+    if(!/^\d{6}$/.test(code))
+        return toast('Enter the 6-digit code.','bad');
+    try{
+        const{ok,d}=await apiPost('/api/login',{
+            username:S.tf.u,
+            password:S.tf.pw,
+            code
+        });
+        if(!ok||!d.user)
+            return toast(d.error||'Wrong code. Try the newest one.','bad');
+        finishLogin(d.user);
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+// Goes back to the normal login form.
+function cancel2fa(){
+    S.tf=null;
+    S.msg='';
+    render();
+}
+
 async function login(){
     // Gets the username and password entered by the player.
     const u=$('un').value.trim(),
@@ -2039,22 +2284,25 @@ async function login(){
                 username:u,
                 password:pw
             });
+            // Email not verified yet: show the "Check Your Email" screen.
+            if(d&&d.verify){
+                S.vf={u,pw,email:d.email,fromLogin:true};
+                S.msg='';
+                return render();
+            }
             // Displays an error if login is unsuccessful.
             if(!ok)
                 return toast(
                             d.error||'Invalid username or password.',
                             'bad'
                         );
-                         // Prepares the player data returned by the backend.
-                         const m=mk(d.user);
-                         DB.users[m.key]=m; // Stores the player information locally.
-                         DB.cur=m.key; // Sets the current logged-in player.
-                         save(); // Saves the updated local data.
-                         S.msg='';
-
-                          // Navigates to the dashboard and refreshes the screen.
-                         go('dashboard');
-                         render();
+                         // Two-factor login: the password was right, now ask for the code.
+                         if(d.twoFactor&&!d.user){
+                            S.tf={u,pw};
+                            S.msg='';
+                            return render();
+                         }
+                         finishLogin(d.user);
                         }catch(x){
                             // Displays an error if the server cannot be reached.
                             toast('Could not reach the server.','bad')
@@ -2157,6 +2405,11 @@ async function register(){
                 'Username must be 3 to 16 letters, numbers or _ .',
                 'bad'
             );
+    // Email address (needed only when the server is running)
+    const em=S.api?($('em').value||'').trim():'';
+    if(S.api&&!EMAIL_OK(em))
+        return toast('Please enter a valid email address.','bad');
+
     if(p.length<8)
         // Checks whether the password contains at least 8 characters.
         return toast('Password needs 8+ characters.','bad');
@@ -2176,6 +2429,7 @@ async function register(){
         try{ // Sends registration details to the backend.
             const{ok,d}=await apiPost('/api/register',{
                 username:u,
+                email:em,
                 password:p,
                 avatar:S.av|0
             });
@@ -2184,14 +2438,13 @@ async function register(){
                     d.error||'Could not create the account.',
                     'bad'
                 );
-                const m=mk(d.user); // Prepares the registered player information.
-                DB.users[m.key]=m; // Stores the player information locally.
-                DB.cur=m.key; // Sets the newly registered player as the current player.
-                save(); // Saves the updated local data.
-                
-                // Opens the dashboard.
-                go('dashboard');
-                render();
+                // The server emailed a code: ask for it before the account is active.
+                if(d.verify){
+                    S.vf={u,pw:p,email:d.email};
+                    S.msg='';
+                    return render();
+                }
+                finishLogin(d.user); // Server without email verification: log in directly.
             }catch(x){  // Handles server connection errors.
                 toast('Could not reach the server.','bad')
             }

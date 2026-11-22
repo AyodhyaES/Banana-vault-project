@@ -10,31 +10,44 @@ const app = express();//Creates the Express application.
 app.use(express.json()); //reads JSON data sent by the frontend.
 app.use(require('cookie-parser')()); //reads cookies from incoming requests.
 app.use(express.static(path.join(__dirname, 'public'))); //serves frontend files from the public folder.
-// Sign-up limit: at most 10 sign-up attempts per IP number in 10 minutes.
-// The IP numbers are kept only in memory for the 10 minutes and are never saved.
-const SIGNUP_MAX = 10, SIGNUP_WINDOW = 10 * 60 * 1000;
-const signups = new Map(); // ip -> list of attempt times
+// Attempt limiter: at most "max" attempts per IP number in the time window.
+// The IP numbers are kept only in memory for that time and are never saved.
+const limiter = (max, windowMs, message) => {
+  const hits = new Map(); // ip -> list of attempt times
 
-app.post('/api/register', (req, res, next) => {
-  const now = Date.now();
-  const recent = (signups.get(req.ip) || []).filter(t => now - t < SIGNUP_WINDOW);
+  // Forget old IP numbers every minute.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, times] of hits)
+      if (times.every(t => now - t >= windowMs)) hits.delete(ip);
+  }, 60000).unref();
 
-  if (recent.length >= SIGNUP_MAX)
-    return res.status(429).json({
-      error: 'Too many sign-up attempts. Please try again in a few minutes.'
-    });
+  return (req, res, next) => {
+    const now = Date.now();
+    const recent = (hits.get(req.ip) || []).filter(t => now - t < windowMs);
 
-  recent.push(now);
-  signups.set(req.ip, recent);
-  next();
-});
+    if (recent.length >= max)
+      return res.status(429).json({ error: message });
 
-// Forget old IP numbers every minute.
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, times] of signups)
-    if (times.every(t => now - t >= SIGNUP_WINDOW)) signups.delete(ip);
-}, 60000).unref();
+    recent.push(now);
+    hits.set(req.ip, recent);
+    next();
+  };
+};
+
+// Sign-up: 10 attempts per IP in 10 minutes.
+app.post('/api/register', limiter(10, 10 * 60 * 1000,
+  'Too many sign-up attempts. Please try again in a few minutes.'));
+
+// Login (password and 2FA code): 15 attempts per IP in 10 minutes, to stop code guessing.
+app.post('/api/login', limiter(15, 10 * 60 * 1000,
+  'Too many login attempts. Please try again in a few minutes.'));
+
+// Email verification: 15 code tries and 5 "new code" requests per IP in 10 minutes.
+app.post('/api/verify-email', limiter(15, 10 * 60 * 1000,
+  'Too many attempts. Please try again in a few minutes.'));
+app.post('/api/resend-code', limiter(5, 10 * 60 * 1000,
+  'Too many requests for a new code. Please try again in a few minutes.'));
 
 app.use('/api', require('./auth'));      // accounts, progress, leaderboard (MongoDB)
 
