@@ -125,7 +125,7 @@ input:focus{outline:0;border-color:var(--gold);box-shadow:0 0 0 4px #f7c33c26}
 .fld input:focus{box-shadow:none}
 #ans{display:block;max-width:280px;margin:14px auto;text-align:center;font-size:1.6rem;font-weight:700;border-radius:14px;border:1.5px solid var(--gold2);background:#050a1c}
 #ans::-webkit-outer-spin-button,#ans::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-#ans{-moz-appearance:textfield}
+#ans{appearance:textfield;-moz-appearance:textfield}
 
 /* stats, progress, PIN */
 .pill{background:linear-gradient(180deg,#ffffff12,#ffffff05);border-color:#c8921a99;font-weight:600;letter-spacing:.02em}
