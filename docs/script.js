@@ -1,3 +1,13 @@
+/* =====================================================================
+   APIs used in this project
+   1. Banana API (https://marcconrad.com/uob/banana/doc.php) - interoperability.
+      The Express server (banana.js) calls it, keeps the solution secret and sends
+      this script only { id, imageUrl }. See loadPuzzle(), submit() and hint().
+   2. Web Audio API (built into the browser) - AudioContext, oscillators and gain
+      nodes make the banana win sound and the other sound effects.
+      See ac(), tone() and winSound().
+   ===================================================================== */
+
 // Banana Mystery Vault - game logic (pages, puzzles, timer, sound, login, MongoDB sync)
 // Image path configuration
 const IMG2={
@@ -28,7 +38,7 @@ const save=()=>{try{localStorage.setItem('bmv2',JSON.stringify(DB))}catch(e){}sy
 const U=()=>DB.users[DB.cur];
 
 //Page Navigation
-const go=h=>{location.hash=h};
+const go=h=>{S.tf=null;S.vf=null;location.hash=h};
 
 //Game level congiguarion 
 const LV=[
@@ -402,6 +412,7 @@ const pages={
                     :''
                 }
             </div>
+            ${S.api?securityCard(u):''}
         `;
     },
     
@@ -553,7 +564,7 @@ const pages={
             rev=Math.floor(S.solved/l.per),
             
             bn=`
-                <div class="banner" 
+                <div class="banner sm" 
                 style="background-image:linear-gradient(#0000,#0d0a14f0),url(${IMG.l[l.n-1]})">
                 
                 <h3>Level ${l.n} — ${l.name}</h3>
@@ -623,33 +634,7 @@ const pages={
                 </div>
             `;
             //Main gameplay screen
-            let h=`
-                <div class="card">
-                    ${bn}
-                    ${stats()}
-                <div class="prog" style="margin-top:10px">
-                    <div style="width:${S.solved/l.total*100}%"></div>
-                </div>
-                
-                <small>Solved ${S.solved} / ${l.total} 
-                · Time <b id="el">${fmt(S.el||0)}</b>
-                </small>
-                
-                ${S.phase=='puzzle'?`
-                    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-                        <span>Time left</span>
-                        
-                        <b id="tm" style="color:var(--gold);min-width:3ch">
-                        ${fmt(Math.max(S.t??TLIM,0))}
-                        </b>
-
-                        <div class="prog" style="flex:1">
-                            <div id="tb" 
-                                style="width:${Math.max(S.t??TLIM,0)/TLIM*100}%">
-                            </div>
-                        </div>
-                    </div>
-                `:''}
+            const pinHTML=`
                 <div class="pin">
                     ${S.pin.map((_,i)=>`
                         <div class="slot ${i<rev?'on':''}">
@@ -657,27 +642,66 @@ const pages={
                         </div>
                     `).join('')}
                 </div>
+            `,
+            solvedHTML=`
+                <small class="solved">Solved ${S.solved} / ${l.total}
+                · Time <b id="el">${fmt(S.el||0)}</b></small>
+                <div class="prog thin">
+                    <div style="width:${S.solved/l.total*100}%"></div>
+                </div>
+            `,
+            puzzle=S.phase=='puzzle';
+
+            // The puzzle, the countdown and the answer box are all on one screen
+            let h=`
+                <div class="card play">
+                    ${puzzle?`
+                        <div class="play-head">
+                            <h3>Level ${l.n} — ${l.name}</h3>
+                            <button class="ghost sm" onclick="go('dashboard')">← Dashboard</button>
+                        </div>
+                    `:bn}
+                    <div class="play-top">
+                        ${stats()}
+                        ${puzzle?`
+                            <div class="timebox">
+                                <span>⏱ Time left</span>
+                                <b id="tm">${fmt(Math.max(S.t??TLIM,0))}</b>
+                                <div class="prog">
+                                    <div id="tb" style="width:${Math.max(S.t??TLIM,0)/TLIM*100}%"></div>
+                                </div>
+                            </div>
+                        `:''}
+                    </div>
+                    ${solvedHTML}
             `;
+            if(!puzzle)h+=pinHTML;
             //Puzzle phase
             if(S.phase=='puzzle')
                 h+=`
-                    ${puzHTML()}
-                    ${S.hintTxt?`
-                        <div class="center">${S.hintTxt}</div>
-                    `:''}
-                    <input 
-                        id="ans" 
-                        type="number" 
-                        inputmode="numeric" 
-                        placeholder="Your answer" 
-                        onkeydown="if(event.key=='Enter')submit()"
-                    >
-                    <div class="row c">
-                        <button onclick="submit()">Submit</button>
-                        <button class="ghost" onclick="hint()">
-                            💡 Hint (free or 5 <i class=co></i>)
-                        </button><button class="ghost" onclick="buyLife()">
-                            ❤️ Life (20 <i class=co></i>)</button>
+                    <div class="play-grid">
+                        <div class="play-left">${puzHTML()}</div>
+                        <div class="play-right">
+                            ${pinHTML}
+                            ${S.hintTxt?`<div class="center">${S.hintTxt}</div>`:''}
+                            <input
+                                id="ans"
+                                type="number"
+                                inputmode="numeric"
+                                placeholder="Your answer"
+                                onkeydown="if(event.key=='Enter')submit()"
+                            >
+                            <div class="row c">
+                                <button onclick="submit()">Submit</button>
+                                <button class="ghost" onclick="hint()">
+                                    💡 Hint <span class="cost">(free or 5 <i class=co></i>)</span>
+                                </button>
+                                <button class="ghost" onclick="buyLife()">
+                                    ❤️ Life <span class="cost">(20 <i class=co></i>)</span>
+                                </button>
+                            </div>
+                            <div class="msg" id="msg">${S.msg}</div>
+                        </div>
                     </div>
                 `;
                 // Treasure chest phase
@@ -712,11 +736,10 @@ const pages={
                         </div>
                     `;
                 }
-                return h+`
+                return h+(puzzle?'':`
                     <div class="msg" id="msg">${S.msg}</div>
-                        ${back}
-                    </div>
-                `;
+                    ${back}
+                `)+`</div>`;
             }
 };
 
@@ -818,10 +841,144 @@ pages.home=c=>`
 `;
 
 /* ---- LOGIN PAGE ---- */
-pages.login=()=>`
+// ----- the 3 steps of the login: Login > Email verification > Access granted -----
+const stepsHTML=(n,mid)=>`
+    <div class="steps">
+        <div class="tfa-title">Two-factor authentication</div>
+        <div class="steps-row">
+            ${['Login',mid||'Email verification','Access granted'].map((t,i)=>`
+                ${i?'<i class="sline"></i>':''}
+                <div class="step ${i+1<n?'done':''} ${i+1===n?'now':''}">
+                    <b>${i+1<n?'✔':i+1}</b>
+                    <span>Step ${i+1}<br>${t}</span>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+`;
+
+// ----- the 6 one-digit boxes for the one-time password (OTP) -----
+const otpBoxes=()=>`
+    <div class="otp-label">ENTER YOUR 6-DIGIT OTP</div>
+    <div class="otp">
+        ${[0,1,2,3,4,5].map(i=>`
+            <input class="otp-box" inputmode="numeric" maxlength="1" placeholder="●"
+                autocomplete="${i?'off':'one-time-code'}" aria-label="Digit ${i+1}"
+                oninput="otpIn(this)" onkeydown="otpKey(event,this)" onpaste="otpPaste(event)">
+        `).join('')}
+    </div>
+    <input type="hidden" id="code">
+`;
+const otpBoxList=()=>[...document.querySelectorAll('.otp-box')];
+
+// Joins the boxes into the hidden field #code and returns the 6 digits
+function otpSync(){
+    const v=otpBoxList().map(b=>b.value).join('');
+    const h=$('code');
+    if(h)h.value=v;
+    return v;
+}
+// Typing a digit moves on to the next box
+function otpIn(el){
+    el.value=el.value.replace(/\D/g,'').slice(-1);
+    otpSync();
+    const n=el.nextElementSibling;
+    if(el.value&&n&&n.classList.contains('otp-box'))n.focus();
+}
+// Backspace goes back, Enter verifies, arrows move
+function otpKey(e,el){
+    const p=el.previousElementSibling,n=el.nextElementSibling;
+    if(e.key==='Enter'){e.preventDefault();return login2fa()}
+    if(e.key==='Backspace'&&!el.value&&p){e.preventDefault();p.value='';p.focus();otpSync()}
+    if(e.key==='ArrowLeft'&&p)p.focus();
+    if(e.key==='ArrowRight'&&n&&n.classList.contains('otp-box'))n.focus();
+}
+// Pasting "123456" fills all the boxes
+function otpPaste(e){
+    e.preventDefault();
+    const d=((e.clipboardData&&e.clipboardData.getData('text'))||'').replace(/\D/g,'').slice(0,6);
+    const bs=otpBoxList();
+    bs.forEach((b,i)=>b.value=d[i]||'');
+    otpSync();
+    (bs[Math.min(d.length,5)]||bs[0]).focus();
+}
+// Empties the boxes (after a wrong code)
+function otpClear(){
+    otpBoxList().forEach(b=>b.value='');
+    otpSync();
+    const f=otpBoxList()[0];
+    if(f)f.focus();
+}
+
+// ----- Step 3: Access granted -----
+const grantedStep=()=>`
     <section class="scene" ${bg(0,IMG2.login)}>
         <div class="gc">
             <img class="crest" src="${IMG2.crest}" alt="">
+            ${stepsHTML(4)}
+            <div class="granted-ic">✔</div>
+            <h2 class="script">Login verified</h2>
+            <p style="margin:0 0 10px">Access your game dashboard.</p>
+            <button class="wide" onclick="enterDashboard()">Open dashboard →</button>
+            <small>Opening automatically…</small>
+        </div>
+    </section>
+`;
+
+// Shows "Access granted" for a moment, then opens the dashboard
+function showGranted(user){
+    S.grant=user;
+    S.tf=null;
+    S.msg='';
+    S.granted=true;
+    render();
+    clearTimeout(S.grantTimer);
+    S.grantTimer=setTimeout(enterDashboard,1800);
+}
+function enterDashboard(){
+    clearTimeout(S.grantTimer);
+    if(!S.granted)return;
+    const u=S.grant;
+    S.granted=false;
+    S.grant=null;
+    finishLogin(u);
+}
+
+// Second step of the login: the 6-digit code from the email
+const loginCodeStep=()=>{
+    const t=S.tf;
+    return`
+    <section class="scene" ${bg(0,IMG2.login)}>
+        <div class="gc">
+            <img class="crest" src="${IMG2.crest}" alt="">
+            ${stepsHTML(2)}
+            <h2 class="script">Email verification</h2>
+            <p style="margin:0 0 4px">
+                ${t.sent
+                    ?`Verification code sent to your registered email<br><b>${t.email}</b>`
+                    :`Press “Resend code” to get a verification code at<br><b>${t.email}</b>`}
+            </p>
+            ${otpBoxes()}
+            <button class="wide" onclick="login2fa()">
+                ✔ Verify and Login
+            </button>
+            <button class="ghost wide" onclick="useEmailCode()">
+                ↻ Resend code
+            </button>
+            <button class="ghost wide" onclick="cancel2fa()">
+                ← Back
+            </button>
+            <small>The code works for 5 minutes</small>
+            <div class="msg" id="msg">${S.msg}</div>
+        </div>
+    </section>
+`};
+
+pages.login=()=>S.granted?grantedStep():S.tf?loginCodeStep():S.vf?verifyStep():`
+    <section class="scene" ${bg(0,IMG2.login)}>
+        <div class="gc">
+            <img class="crest" src="${IMG2.crest}" alt="">
+            ${S.api?stepsHTML(1):''}
             <h2 class="script">Welcome Back!</h2>
             <p style="margin:0 0 8px">
                 Login to continue your adventure
@@ -861,7 +1018,7 @@ pages.login=()=>`
 
 /* -------- REGISTRATION PAGE -------- */
 
-pages.register = () => `
+pages.register = () => S.vf ? verifyStep() : `
     <section class="scene" ${bg(0, IMG2.reg)}>
         <div class="gc">
 
@@ -872,6 +1029,26 @@ pages.register = () => `
             <p>Join the Banana Mystery Vault adventure!</p>
 
             ${fld('👤', 'un', 'Username', 'text')}
+
+            ${S.api?fld('✉️', 'em', 'Email address', 'email'):''}
+
+            <!-- Explorer ID card preview + avatar picker -->
+            <div class="idprev">
+                <div id="avprev">${avatar(S.av|0,54)}</div>
+                <div>
+                    <small>YOUR UNIQUE EXPLORER ID</small>
+                    <div class="idno" id="preid">${S.preId||'BMV-·····'}</div>
+                </div>
+            </div>
+            <div class="avlab">Choose your avatar</div>
+            <div class="avs">
+                ${[0,1,2,3,4,5].map(i=>`
+                    <button type="button" class="av ${(S.av|0)===i?'on':''}"
+                        onclick="pickAv(${i})" aria-label="Avatar ${i+1}">
+                        ${avatar(i,34)}
+                    </button>
+                `).join('')}
+            </div>
 
             ${fld('🔒', 'pw', 'Password', 'password')}
 
@@ -1309,27 +1486,6 @@ function startLevel(n){
     loadPuzzle();  // Load the first puzzle
 }
 
-/*------------------- BANANA API PUZZLE ---------*/
-// Banana API: returns { question: <image url>, solution: <digit> }
-const BANANA_URL='https://marcconrad.com/uob/banana/api.php?out=json';
-
-async function fetchBanana(){
-    const ctl=new AbortController();
-    const to=setTimeout(()=>ctl.abort(),6000);   // do not wait forever
-    try{
-        const r=await fetch(BANANA_URL+'&t='+Date.now(),{signal:ctl.signal});
-        if(!r.ok)throw 0;
-        const d=await r.json();
-        const ans=Number(d.solution);
-        if(!d.question||!Number.isInteger(ans))throw 0;
-        return{
-            img:String(d.question).replace(/^http:/,'https:'),
-            ans,
-            banana:true
-        };
-    }finally{clearTimeout(to)}
-}
-
 /*------------------- LOAD A PUZZLE---------*/
 async function loadPuzzle(){
     S.p=null; // Clear the current puzzle
@@ -1338,20 +1494,15 @@ async function loadPuzzle(){
     render(); // Display the puzzle loading state
 
     try{
-        // 1) Your own backend, if it is running
+        // Banana API puzzle through the Express server (the server keeps the solution)
         const r=await fetch('/api/puzzle');
         if(!r.ok)throw 0;
         const d=await r.json();
         if(!d.id||!d.imageUrl)throw 0;
         S.p={id:d.id,img:d.imageUrl};
     }catch(e){
-        try{
-            // 2) The Banana API directly
-            S.p=await fetchBanana();
-        }catch(e2){
-            // 3) Local puzzle if both fail
-            S.p=makePuzzle(S.lvl.n);
-        }
+        // If the API cannot be reached, use a local practice puzzle
+        S.p=makePuzzle(S.lvl.n);
     }
     S.t=TLIM; // Set the countdown to 45 seconds
     render(); // Display the loaded puzzle
@@ -2023,9 +2174,196 @@ function pickAv(i){
     // Updates the visual selection of the avatars.
     document.querySelectorAll('.av').forEach((b,j)=>
         b.classList.toggle('on',j===i)
-)}
+    );
+    // Updates the avatar on the Explorer ID card preview.
+    const pv=$('avprev');
+    if(pv)pv.innerHTML=avatar(i,54);
+}
+
+// Shows a unique Explorer ID on the register page.
+// With the server: asks it for a free ID. Without the server: makes a local one.
+function ensurePreviewId(){
+    const show=()=>{const e=$('preid');if(e)e.textContent=S.preId};
+    if(S.preId)return show();
+    if(!S.apiChecked)return;                    // still asking the server: placeholder stays
+    if(!S.api){S.preId=newId();return show()}   // no server: make a local ID
+    if(S.preBusy)return;
+    S.preBusy=true;
+    fetch('/api/explorer-id')
+        .then(r=>r.ok?r.json():null)
+        .then(d=>{if(d&&d.explorerId){S.preId=d.explorerId;show()}})
+        .catch(()=>{})
+        .finally(()=>{S.preBusy=false});
+}
 
 // Handles player login.
+/* ---------- Email verification at sign-up ---------- */
+
+// Simple email check (same rule as the server)
+const EMAIL_OK=e=>/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(e)&&e.length<=254;
+
+// Screen where the player types the 6-digit code from the email
+const verifyStep=()=>`
+    <section class="scene" ${bg(0,IMG2.reg)}>
+        <div class="gc">
+            <img class="crest" src="${IMG2.crest}" alt="">
+            <h2 class="script">Check Your Email</h2>
+            ${S.vf.explorerId?`
+                <div class="idprev" style="justify-content:center">
+                    ${avatar(S.vf.avatar|0,54)}
+                    <div>
+                        <small>YOUR EXPLORER ID</small>
+                        <div class="idno">${S.vf.explorerId}</div>
+                    </div>
+                </div>
+            `:''}
+            <p style="margin:0 0 8px">
+                ${S.vf.fromLogin
+                    ?`Your email is not verified yet.<br>Press “Send a new code”, then check <b>${S.vf.email}</b>`
+                    :`We sent a 6-digit code to<br><b>${S.vf.email}</b>`}
+            </p>
+            ${fld(
+                '✉️',
+                'vcode',
+                '6-digit code',
+                'text',
+                `inputmode="numeric" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key=='Enter')verifyEmail()"`
+            )}
+            <button class="wide" onclick="verifyEmail()">
+                ✔ Verify and Continue
+            </button>
+            <button class="ghost wide" onclick="resendCode()">
+                Send a new code
+            </button>
+            <button class="ghost wide" onclick="cancelVerify()">
+                ← Back
+            </button>
+            <small>The code works for 10 minutes</small>
+            <div class="msg" id="msg">${S.msg}</div>
+        </div>
+    </section>
+`;
+
+// Sends the code to the server; on success the player is logged in
+async function verifyEmail(){
+    const code=($('vcode').value||'').replace(/\s/g,'');
+    if(!/^\d{6}$/.test(code))
+        return toast('Enter the 6-digit code.','bad');
+    try{
+        const{ok,d}=await apiPost('/api/verify-email',{
+            username:S.vf.u,
+            password:S.vf.pw,
+            code
+        });
+        if(!ok||!d.user)
+            return toast(d.error||'Wrong code.','bad');
+        S.vf=null;
+        finishLogin(d.user);
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+// Asks the server to email a new code
+async function resendCode(){
+    try{
+        const{ok,d}=await apiPost('/api/resend-code',{
+            username:S.vf.u,
+            password:S.vf.pw
+        });
+        if(!ok)
+            return toast(d.error||'Could not send a new code.','bad');
+        S.vf.fromLogin=false;
+        toast('A new code was sent ✉️','good');
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+function cancelVerify(){
+    S.vf=null;
+    S.msg='';
+    render();
+}
+
+/* ---------- Two-factor authentication (dashboard card) ---------- */
+
+// The "Security" card: the emailed one-time code is required at every login
+const securityCard=u=>`
+    <h2>Security</h2>
+    <div class="card">
+        <h3 style="margin-top:0">Two-factor authentication</h3>
+        <small>Every login needs a one-time code from your email.</small>
+        <h4 class="sec-h">📧 Email code</h4>
+        ${u.hasEmail
+            ?`<p>🔒 <b class="good">Always on.</b> After your password, the platform sends a
+               temporary one-time code to your registered email address (<b>${u.emailMasked||''}</b>).
+               The code works for 5 minutes, and you must type it to enter the game.</p>`
+            :`<p>This account has no email address, so email codes are not available.</p>`}
+    </div>
+`;
+
+/* ---------- Two-factor login (emailed one-time code) ---------- */
+
+// Saves the logged-in player and opens the dashboard.
+function finishLogin(user){
+    const m=mk(user);
+    DB.users[m.key]=m; // Stores the player information locally.
+    DB.cur=m.key; // Sets the current logged-in player.
+    save(); // Saves the updated local data.
+    S.msg='';
+    S.tf=null;
+    go('dashboard');
+    render();
+}
+
+// Second login step: sends the password again together with the 6-digit code.
+async function login2fa(){
+    const code=(($('code')&&$('code').value)||'').replace(/\s/g,'');
+    if(!/^\d{6}$/.test(code))
+        return toast('Enter the 6-digit code.','bad');
+    try{
+        const{ok,d}=await apiPost('/api/login',{
+            username:S.tf.u,
+            password:S.tf.pw,
+            code
+        });
+        if(!ok||!d.user){
+            toast(d.error||'Wrong code. Try the newest one.','bad');
+            return otpClear();
+        }
+        showGranted(d.user);   // Step 3: Access granted
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+// Asks the server to email a login code (needs the password again)
+async function useEmailCode(){
+    try{
+        const{ok,d}=await apiPost('/api/login/email-code',{
+            username:S.tf.u,
+            password:S.tf.pw
+        });
+        if(!ok)
+            return toast(d.error||'Could not send the code.','bad');
+        S.tf.sent=true;
+        S.tf.email=d.email||S.tf.email;
+        S.msg='';
+        render();
+        toast('Code sent ✉️','good');
+    }catch(x){
+        toast('Could not reach the server.','bad')
+    }
+}
+
+// Goes back to the normal login form.
+function cancel2fa(){
+    S.tf=null;
+    S.msg='';
+    render();
+}
+
 async function login(){
     // Gets the username and password entered by the player.
     const u=$('un').value.trim(),
@@ -2039,22 +2377,29 @@ async function login(){
                 username:u,
                 password:pw
             });
+            // Email not verified yet: show the "Check Your Email" screen.
+            if(d&&d.verify){
+                S.vf={u,pw,email:d.email,fromLogin:true};
+                S.msg='';
+                return render();
+            }
             // Displays an error if login is unsuccessful.
             if(!ok)
                 return toast(
                             d.error||'Invalid username or password.',
                             'bad'
                         );
-                         // Prepares the player data returned by the backend.
-                         const m=mk(d.user);
-                         DB.users[m.key]=m; // Stores the player information locally.
-                         DB.cur=m.key; // Sets the current logged-in player.
-                         save(); // Saves the updated local data.
-                         S.msg='';
-
-                          // Navigates to the dashboard and refreshes the screen.
-                         go('dashboard');
-                         render();
+                         // Two-factor login: the password was right, now ask for the code.
+                         if(d.twoFactor&&!d.user){
+                            S.tf={
+                                u,pw,
+                                email:d.email||'',
+                                sent:!!d.sent
+                            };
+                            S.msg='';
+                            return render();
+                         }
+                         finishLogin(d.user);
                         }catch(x){
                             // Displays an error if the server cannot be reached.
                             toast('Could not reach the server.','bad')
@@ -2120,6 +2465,7 @@ function board(){
 
              // Enables backend API mode.
             S.api=true;
+            S.apiChecked=true;
             
             // Requests the currently authenticated player's information.
             const r=await fetch('/api/me');
@@ -2142,6 +2488,10 @@ function board(){
         }catch(e){
              // Handles connection or request errors.
             toast('An error occurred while initializing the application.','bad');
+        }finally{
+            // The server check is finished (server up or down).
+            S.apiChecked=true;
+            if(!S.api&&(location.hash||'')=='#register')ensurePreviewId();
         }
     }
 // Handles new player registration.
@@ -2157,6 +2507,11 @@ async function register(){
                 'Username must be 3 to 16 letters, numbers or _ .',
                 'bad'
             );
+    // Email address (needed only when the server is running)
+    const em=S.api?($('em').value||'').trim():'';
+    if(S.api&&!EMAIL_OK(em))
+        return toast('Please enter a valid email address.','bad');
+
     if(p.length<8)
         // Checks whether the password contains at least 8 characters.
         return toast('Password needs 8+ characters.','bad');
@@ -2176,22 +2531,25 @@ async function register(){
         try{ // Sends registration details to the backend.
             const{ok,d}=await apiPost('/api/register',{
                 username:u,
+                email:em,
                 password:p,
-                avatar:S.av|0
+                avatar:S.av|0,
+                explorerId:S.preId||''
             });
             if(!ok) // Displays an error if registration fails.
                 return toast(
                     d.error||'Could not create the account.',
                     'bad'
                 );
-                const m=mk(d.user); // Prepares the registered player information.
-                DB.users[m.key]=m; // Stores the player information locally.
-                DB.cur=m.key; // Sets the newly registered player as the current player.
-                save(); // Saves the updated local data.
-                
-                // Opens the dashboard.
-                go('dashboard');
-                render();
+                // The server emailed a code: ask for it before the account is active.
+                if(d.verify){
+                    S.vf={u,pw:p,email:d.email,explorerId:d.explorerId,avatar:d.avatar};
+                    S.preId=null;
+                    S.msg='';
+                    return render();
+                }
+                S.preId=null;
+                finishLogin(d.user); // Server without email verification: log in directly.
             }catch(x){  // Handles server connection errors.
                 toast('Could not reach the server.','bad')
             }
@@ -2206,7 +2564,7 @@ async function register(){
                 username:u,
                 name:u,
                 key,
-                explorerId:newId(),
+                explorerId:S.preId||newId(),
                 avatar:S.av|0,
                 joined:Date.now(),
                 pw:btoa(p),
@@ -2219,6 +2577,7 @@ async function register(){
                 done:[]
             };
             DB.cur=key;  // Sets the new player as the current player.
+            S.preId=null;
             save(); // Saves the player information
             
             // Navigates to the dashboard.
@@ -2295,6 +2654,11 @@ function render(){
      // Automatically focuses on an input field on larger screens.
     const f=$('ans')||$('pinin')||$('un');
     if(f&&innerWidth>700)f.focus();
+    const ob=document.querySelector('.otp-box');
+    if(ob&&innerWidth>700)ob.focus();
+
+    // Register page: show the unique Explorer ID
+    if(p=='register'&&!S.vf)ensurePreviewId();
 }
 // Handles browser back and forward navigation.
 addEventListener('hashchange',()=>{

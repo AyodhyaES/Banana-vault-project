@@ -39,7 +39,7 @@ const limiter = (max, windowMs, message) => {
 app.post('/api/register', limiter(10, 10 * 60 * 1000,
   'Too many sign-up attempts. Please try again in a few minutes.'));
 
-// Login (password and 2FA code): 15 attempts per IP in 10 minutes, to stop code guessing.
+// Login (password and emailed code): 15 attempts per IP in 10 minutes, to stop code guessing.
 app.post('/api/login', limiter(15, 10 * 60 * 1000,
   'Too many login attempts. Please try again in a few minutes.'));
 
@@ -48,6 +48,14 @@ app.post('/api/verify-email', limiter(15, 10 * 60 * 1000,
   'Too many attempts. Please try again in a few minutes.'));
 app.post('/api/resend-code', limiter(5, 10 * 60 * 1000,
   'Too many requests for a new code. Please try again in a few minutes.'));
+
+// "Resend code" for the login one-time code: 5 requests per IP in 10 minutes.
+app.post('/api/login/email-code', limiter(5, 10 * 60 * 1000,
+  'Too many requests for a new code. Please try again in a few minutes.'));
+
+// Explorer ID preview on the register page: 30 requests per IP in 10 minutes.
+app.get('/api/explorer-id', limiter(30, 10 * 60 * 1000,
+  'Too many requests. Please try again in a few minutes.'));
 
 app.use('/api', require('./auth'));      // accounts, progress, leaderboard (MongoDB)
 

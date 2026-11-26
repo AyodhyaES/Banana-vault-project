@@ -97,8 +97,6 @@ nav{background:#070d24f2;padding:8px 22px}nav .links{gap:2px}
 ::selection{background:var(--gold);color:#2a1c00}
 html{scroll-behavior:smooth}
 body{background:radial-gradient(ellipse at 50% -10%,#1a2a66 0%,#0b1433 38%,#070d24 72%) fixed;-webkit-font-smoothing:antialiased}
-main.wrap{animation:egFade .5s var(--ease) both}
-@keyframes egFade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 h1,h2,h3{text-shadow:0 2px 16px #f7c33c22}
 
 /* navigation */
@@ -126,9 +124,9 @@ input:focus{outline:0;border-color:var(--gold);box-shadow:0 0 0 4px #f7c33c26}
 .fld{transition:border-color .2s,box-shadow .2s}
 .fld:focus-within{border-color:#ffe27a;box-shadow:0 0 0 4px #f7c33c26}
 .fld input:focus{box-shadow:none}
-#ans{display:block;max-width:280px;margin:14px auto;text-align:center;font-size:1.6rem;font-weight:700;border-radius:14px;border:1.5px solid var(--gold2);background:#050a1c;appearance:textfield}
+#ans{display:block;max-width:280px;margin:14px auto;text-align:center;font-size:1.6rem;font-weight:700;border-radius:14px;border:1.5px solid var(--gold2);background:#050a1c}
 #ans::-webkit-outer-spin-button,#ans::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-#ans{appearance:textfield;-moz-appearance:textfield}
+#ans{-moz-appearance:textfield;appearance:textfield}
 
 /* stats, progress, PIN */
 .pill{background:linear-gradient(180deg,#ffffff12,#ffffff05);border-color:#c8921a99;font-weight:600;letter-spacing:.02em}
@@ -178,4 +176,123 @@ tr.me{background:#f7c33c26}
 
 /* small screens */
 @media(max-width:480px){.slot{width:46px;height:56px;font-size:1.6rem}.card{padding:14px}.bp-frame{padding:12px}#ans{font-size:1.3rem}}
-@media(prefers-reduced-motion:reduce){main.wrap,.lvc,.lvc .im,button,.slot{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){.lvc,.lvc .im,button,.slot{animation:none!important;transition:none!important}}
+
+
+/* ===== PLAY SCREEN: puzzle + countdown on ONE screen ===== */
+.banner.sm{height:84px;margin-bottom:6px}
+.play{padding:12px 16px}
+.play-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.play-head h3{margin:0;font-size:1.15rem}
+button.sm{padding:6px 14px;font-size:.85rem;white-space:nowrap}
+.play-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:8px 0 4px}
+.play-top .bar{flex:0 0 auto;justify-content:flex-start}
+.timebox{display:flex;align-items:center;gap:10px;flex:1;min-width:230px}
+.timebox b{color:var(--gold);min-width:4ch;font-size:1.25rem}
+.timebox .prog{flex:1}
+.play .solved{display:block;margin:2px 0 4px}
+.prog.thin{height:6px;margin-bottom:8px}
+.play-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:center}
+.play-left,.play-right{min-width:0}
+.play-right{text-align:center}
+.play .pin{margin:0 0 8px;gap:8px}
+.play .slot{width:46px;height:54px;font-size:1.5rem}
+.play .bp-frame{margin:0;padding:10px 12px 12px}
+.play .bp-hint{margin:2px 0 8px}
+.play .bp-img{padding:6px}
+/* the picture shrinks to the window height so the countdown and answer box stay visible */
+.play .bp-img img{width:auto;max-width:100%;max-height:clamp(150px,calc(100vh - 390px),460px)}
+.play .sg{margin:0 auto}
+.play #ans{margin:8px auto;padding:9px 12px}
+.play .row.c{margin-top:6px}
+.play .row.c button{padding:8px 14px}
+.play .msg{min-height:1.2em;margin:4px 0 0}
+@media(max-width:700px){
+  /* smaller menu so the game gets more room */
+  nav{padding:6px 10px;gap:4px}
+  nav a{padding:4px 8px;font-size:.85rem}
+  .logo img{width:32px;height:32px}
+  .nr{gap:6px}.nr button{padding:5px 12px;font-size:.85rem}
+  .wrap{padding:10px}
+  /* play screen */
+  .play{padding:10px 12px}
+  .play-head h3{font-size:1rem}
+  .play .pill{padding:3px 9px;font-size:.8rem}
+  .play-top{margin:4px 0 2px;gap:6px 12px}
+  .timebox{min-width:200px}
+  .timebox b{font-size:1.1rem}
+  .play-grid{grid-template-columns:1fr;gap:6px}
+  .play .bp-frame{padding:6px}
+  .play .bp-label{font-size:.65rem}
+  .play .bp-hint{display:none}
+  .play .bp-img{padding:4px}
+  .play .bp-img img{max-height:clamp(100px,23vh,260px)}
+  .play .pin{margin:0 0 4px;gap:6px}
+  .play .slot{width:34px;height:40px;font-size:1.15rem}
+  .play #ans{margin:4px auto;padding:7px 10px;font-size:1.2rem}
+  .play .row.c{flex-wrap:nowrap;gap:6px;margin-top:4px}
+  .play .row.c button{flex:1;padding:6px 8px;font-size:.8rem}
+  .play .cost{display:block;font-size:.65rem;font-weight:400}
+}
+
+/* ===== SHORT WINDOWS (small laptops, browser zoom 125-150%): keep puzzle + countdown on one screen ===== */
+@media(max-height:640px) and (min-width:701px){
+  nav{padding:4px 16px}
+  .logo img{width:34px;height:34px}
+  .nr button{padding:5px 14px}
+  .wrap{padding:8px 16px}
+  .play{padding:8px 14px;margin:6px 0}
+  .play-head{display:none}
+  .play-top{margin:2px 0}
+  .play .solved{margin:0 0 4px;font-size:.8rem}
+  .prog.thin{display:none}
+  .play .bp-label,.play .bp-hint{display:none}
+  .play .bp-frame{padding:6px}
+  .play .bp-img{padding:4px}
+  .play .bp-img img{max-height:clamp(90px,calc(100vh - 215px),460px)}
+  .play .pin{margin-bottom:4px}
+  .play .slot{width:38px;height:44px;font-size:1.25rem}
+  .play #ans{margin:4px auto;padding:6px 10px;font-size:1.3rem}
+  .play .row.c{margin-top:2px}
+  .play .row.c button{padding:6px 12px;font-size:.9rem}
+  .play .msg{min-height:1em;margin:2px 0 0}
+}
+/* short phones */
+@media(max-width:700px) and (max-height:720px){
+  .play-head{display:none}
+  .prog.thin{display:none}
+  .play .solved{margin:0 0 4px}
+  .play .bp-img img{max-height:clamp(90px,calc(100vh - 400px),260px)}
+  .play .msg{min-height:0;margin:2px 0 0}
+  .wrap{padding:6px 10px 0}
+  .play{margin:6px 0 0;padding-bottom:8px}
+  .banner.sm{height:60px}
+}
+
+/* ===== REGISTER: Explorer ID card + avatar picker ===== */
+.idprev{display:flex;align-items:center;gap:12px;margin:10px 0 6px;padding:8px 12px;border:1px solid var(--gold2);border-radius:14px;background:#050a1c;text-align:left}
+.idprev small{display:block;letter-spacing:.12em;font-size:.7rem}
+.idprev .idno{font-size:1.35rem;line-height:1.1}
+.avlab{margin:6px 0 0;text-align:left;font-size:.85rem;color:var(--mut)}
+.gc .avs{margin:4px 0 8px;gap:6px;justify-content:space-between;flex-wrap:nowrap}
+.gc .av{padding:1px;box-shadow:none}
+
+/* ===== SECURITY CARD ===== */
+.sec-h{margin:14px 0 6px;color:var(--gold);font-size:1.05rem}
+
+/* ===== TWO-FACTOR LOGIN: 3 steps + one-time code boxes ===== */
+.steps{margin:2px 0 8px}
+.tfa-title{font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin:0 0 8px}
+.steps-row{display:flex;align-items:flex-start;justify-content:center}
+.step{display:flex;flex-direction:column;align-items:center;gap:4px;width:96px;font-size:.68rem;line-height:1.25;color:var(--mut);text-align:center}
+.step b{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:1.5px solid #4b3a1a;background:#050a1c;color:var(--mut);font-size:.85rem}
+.step.now{color:var(--txt)}
+.step.now b{border-color:var(--gold);color:#2a1c00;background:linear-gradient(180deg,#ffe27a,#d99a00);box-shadow:0 0 12px #f7c33c66}
+.step.done b{background:#1f5f3a;border-color:#6be28f;color:#fff}
+.sline{flex:0 0 18px;height:2px;margin-top:14px;background:#4b3a1a}
+.otp-label{font-size:.7rem;letter-spacing:.18em;color:var(--mut);margin:10px 0 6px;text-align:left}
+.otp{display:flex;gap:8px;margin-bottom:10px}
+.otp-box{flex:1;min-width:0;width:100%;height:50px;margin:0;padding:0;text-align:center;font:700 1.5rem Georgia,serif;border-radius:12px;border:1.5px solid var(--gold2);background:#050a1c;color:var(--gold)}
+.otp-box::placeholder{color:#5b6490;font-size:.8rem}
+.granted-ic{width:70px;height:70px;border-radius:50%;margin:8px auto;display:grid;place-items:center;font-size:2.2rem;background:linear-gradient(180deg,#6be28f,#2e9c58);color:#06210f;box-shadow:0 0 28px #6be28f66;animation:pop .5s}
+@media(max-width:480px){.step{width:84px}.otp{gap:6px}.otp-box{height:46px}}

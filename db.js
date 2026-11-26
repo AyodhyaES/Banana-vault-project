@@ -40,10 +40,11 @@ const userSchema = new mongoose.Schema({
     max: 5
   },
 
-  // Two-factor login (authenticator app, TOTP)
-  twoFactorSecret: { type: String, default: '' },
-  twoFactorEnabled: { type: Boolean, default: false },
-  twoFactorLastStep: { type: Number, default: 0 },   // stops a code being used twice
+  // Email code (OTP) needed at every login
+  emailOtpHash: { type: String, default: '' },         // the code is saved scrambled
+  emailOtpExpires: { type: Number, default: 0 },
+  emailOtpTries: { type: Number, default: 0 },
+  emailOtpSentAt: { type: Number, default: 0 },
 
   // Email verification (accounts made before this feature count as verified)
   email: { type: String, trim: true, maxlength: 254 },

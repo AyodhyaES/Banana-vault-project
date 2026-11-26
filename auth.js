@@ -21,55 +21,6 @@ const COOKIE = {
 };
 
 
-// ---------- Two-factor authentication (TOTP, RFC 6238) ----------
-// Works with Google Authenticator, Microsoft Authenticator and Authy.
-const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const STEP = 30; // a new code every 30 seconds
-
-const b32encode = buf => {
-  let bits = '', out = '';
-  for (const byte of buf) bits += byte.toString(2).padStart(8, '0');
-  for (let i = 0; i < bits.length; i += 5)
-    out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)];
-  return out;
-};
-
-const b32decode = text => {
-  let bits = '';
-  for (const ch of text.replace(/=+$/, '').toUpperCase()) {
-    const v = B32.indexOf(ch);
-    if (v >= 0) bits += v.toString(2).padStart(5, '0');
-  }
-  const bytes = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8)
-    bytes.push(parseInt(bits.slice(i, i + 8), 2));
-  return Buffer.from(bytes);
-};
-
-// 6-digit code for one time step
-const totpCode = (secret, step) => {
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(step));
-  const h = crypto.createHmac('sha1', b32decode(secret)).update(counter).digest();
-  const o = h[h.length - 1] & 15;
-  const n = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
-  return String(n % 1000000).padStart(6, '0');
-};
-
-// Returns the matching time step, or 0 if the code is wrong or was already used.
-// One step before and after is accepted for small clock differences.
-const checkTotp = (user, code) => {
-  const c = String(code || '').replace(/\s/g, '');
-  if (!/^\d{6}$/.test(c) || !user.twoFactorSecret) return 0;
-  const now = Math.floor(Date.now() / 1000 / STEP);
-  for (const step of [now - 1, now, now + 1]) {
-    if (step > (user.twoFactorLastStep || 0) &&
-        crypto.timingSafeEqual(Buffer.from(totpCode(user.twoFactorSecret, step)), Buffer.from(c)))
-      return step;
-  }
-  return 0;
-};
-
 // Public player information.
 
 const pub = u => ({
@@ -86,7 +37,8 @@ const pub = u => ({
   unlocked: u.unlocked,
   done: u.done,
   best: u.best || {},
-  twoFactor: !!u.twoFactorEnabled
+  hasEmail: !!u.email,                // the email code is used at every login
+  emailMasked: maskEmail(u.email)     // a***@gmail.com
 });
 
 //Dtabase  connection middleware
@@ -143,7 +95,8 @@ router.get('/health', (req, res) => {
 });
 
 // ---------- Email verification at sign-up ----------
-const CODE_MINUTES = 10;     // a code works for 10 minutes
+const CODE_MINUTES = 10;     // sign-up code: works for 10 minutes
+const OTP_MINUTES = 5;       // login one-time code (OTP): works for 5 minutes
 const CODE_TRIES = 5;        // 5 wrong tries, then a new code is needed
 const RESEND_SECONDS = 60;   // wait before asking for another code
 
@@ -168,6 +121,72 @@ const sendNewCode = async user => {
   await user.save();
 
   await mailer.sendCode(user.email, user.username, code, CODE_MINUTES);
+};
+
+// ---------- Email code as a second login step (another two-factor option) ----------
+// Makes a new 6-digit code, saves it scrambled with an expiry time, and emails it.
+const sendLoginOtp = async (user, purpose) => {
+  const code = String(crypto.randomInt(100000, 1000000));
+
+  user.emailOtpHash = hashCode(user._id, 'otp:' + code);
+  user.emailOtpExpires = Date.now() + OTP_MINUTES * 60 * 1000;
+  user.emailOtpTries = 0;
+  user.emailOtpSentAt = Date.now();
+  await user.save();
+
+  await mailer.sendCode(user.email, user.username, code, OTP_MINUTES, purpose);
+};
+
+// Seconds still to wait before another code can be sent (0 = can send now)
+const otpWait = user => Math.max(0, Math.ceil(
+  ((user.emailOtpSentAt || 0) + RESEND_SECONDS * 1000 - Date.now()) / 1000
+));
+
+// Checks a code from the email. Every try counts and a code works only once.
+const checkEmailOtp = async (user, codeIn) => {
+  const code = String(codeIn || '').replace(/\s/g, '');
+
+  if (!user.emailOtpHash || Date.now() > user.emailOtpExpires)
+    return { ok: false, status: 400, error: 'That code has expired. Ask for a new code.' };
+
+  if (user.emailOtpTries >= CODE_TRIES)
+    return { ok: false, status: 429, error: 'Too many wrong codes. Ask for a new code.' };
+
+  user.emailOtpTries += 1;
+
+  const good =
+    /^\d{6}$/.test(code) &&
+    crypto.timingSafeEqual(
+      Buffer.from(hashCode(user._id, 'otp:' + code)),
+      Buffer.from(user.emailOtpHash)
+    );
+
+  if (!good) {
+    await user.save();
+    const left = CODE_TRIES - user.emailOtpTries;
+    return {
+      ok: false,
+      status: 400,
+      error: left > 0
+        ? 'Wrong code. ' + left + ' tries left.'
+        : 'Too many wrong codes. Ask for a new code.'
+    };
+  }
+
+  user.emailOtpHash = '';
+  user.emailOtpExpires = 0;
+  user.emailOtpTries = 0;
+  await user.save();
+  return { ok: true };
+};
+
+// A random Explorer ID (BMV-12345) that no other player has.
+const freeExplorerId = async () => {
+  let id;
+  do {
+    id = 'BMV-' + crypto.randomInt(10000, 100000);
+  } while (await User.exists({ explorerId: id }));
+  return id;
 };
 
 // Finds a player by username and checks the password (null if wrong).
@@ -223,11 +242,12 @@ router.post('/register', dbUp, async (req, res) => {
       });
     }
 
-    // Explorer ID: pick a random number until no other player has it.
-    let explorerId;
-    do {
-      explorerId = 'BMV-' + crypto.randomInt(10000, 100000);
-    } while (await User.exists({ explorerId }));
+    // Explorer ID: use the one shown on the register page if it is still free,
+    // otherwise make a new unique one.
+    let explorerId = String(req.body.explorerId || '');
+    if (!/^BMV-[1-9]\d{4}$/.test(explorerId) || await User.exists({ explorerId })) {
+      explorerId = await freeExplorerId();
+    }
 
     const user = await User.create({
       username,
@@ -253,23 +273,37 @@ router.post('/register', dbUp, async (req, res) => {
     // No session cookie yet: the player must verify the email first.
     res.status(201).json({
       verify: true,
-      email: maskEmail(email)
+      email: maskEmail(email),
+      explorerId: user.explorerId,    // public (also shown on the leaderboard)
+      avatar: user.avatar
     });
 
   } catch (err) {
     console.error('Registration error:', err.message);
 
     if (err.code === 11000) {
+      const key = err.keyPattern || {};
       return res.status(409).json({
-        error: err.keyPattern && err.keyPattern.emailKey
+        error: key.emailKey
           ? 'That email is already used.'
-          : 'That username is taken.'
+          : key.explorerId
+            ? 'Please press Create Account again.'
+            : 'That username is taken.'
       });
     }
 
     res.status(500).json({
       error: 'Could not create the account.'
     });
+  }
+});
+
+// EXPLORER ID PREVIEW: a free ID to show on the register page
+router.get('/explorer-id', dbUp, async (req, res) => {
+  try {
+    res.json({ explorerId: await freeExplorerId() });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not make an Explorer ID.' });
   }
 });
 
@@ -404,17 +438,34 @@ router.post('/login', dbUp, async (req, res) => {
       });
     }
 
-    // Two-factor: the password is right, now the 6-digit code is needed.
-    if (user.twoFactorEnabled) {
+    // Two-factor: the password is right, now an emailed one-time code (OTP) is needed.
+    // Every account has a verified email, so the code is required at every login.
+    if (user.email) {
       const code = String(req.body.code || '').trim();
 
-      if (!code) return res.json({ twoFactor: true });   // no session yet
+      if (!code) {
+        // Step 2 starts: no session yet. The OTP is emailed right now.
+        let sent = false;
+        if (otpWait(user) === 0) {
+          try {
+            await sendLoginOtp(user, 'login');
+            sent = true;
+          } catch (mailErr) {
+            console.error('Email error:', mailErr.message);
+          }
+        }
+        return res.json({
+          twoFactor: true,
+          email: maskEmail(user.email),
+          sent
+        });
+      }
 
-      const step = checkTotp(user, code);
+      const r = await checkEmailOtp(user, code);
 
-      if (!step) {
-        return res.status(401).json({
-          error: 'Wrong code. Try the newest code from your app.',
+      if (!r.ok) {
+        return res.status(r.status === 429 ? 429 : 401).json({
+          error: r.error,
           twoFactor: true
         });
       }
@@ -438,86 +489,41 @@ router.post('/login', dbUp, async (req, res) => {
   }
 });
 
-// TWO-FACTOR: step 1 - make a secret key for the authenticator app
-router.post('/2fa/setup', dbUp, auth, async (req, res) => {
+// EMAIL CODE AT LOGIN: sends a new login code (needs the password)
+router.post('/login/email-code', dbUp, async (req, res) => {
   try {
-    if (req.user.twoFactorEnabled) {
+    const user = await findWithPassword(req.body);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    if (!user.email) {
       return res.status(400).json({
-        error: 'Two-step login is already on.'
+        error: 'This account has no email address.'
       });
     }
 
-    const secret = b32encode(crypto.randomBytes(20));
+    const wait = otpWait(user);
 
-    req.user.twoFactorSecret = secret;   // not active until a code is confirmed
-    req.user.twoFactorLastStep = 0;
-    await req.user.save();
-
-    const issuer = 'Banana Mystery Vault';
-    const otpauth =
-      'otpauth://totp/' + encodeURIComponent(issuer + ':' + req.user.username) +
-      '?secret=' + secret + '&issuer=' + encodeURIComponent(issuer);
-
-    // Optional QR image: works if the "qrcode" package is installed (npm install qrcode).
-    let qr = null;
-    try { qr = await require('qrcode').toDataURL(otpauth); } catch (e) {}
-
-    res.json({ secret, otpauth, qr });
-
-  } catch (err) {
-    console.error('2FA setup error:', err.message);
-    res.status(500).json({ error: 'Could not start the set-up.' });
-  }
-});
-
-// TWO-FACTOR: step 2 - the player types the first code to prove it works
-router.post('/2fa/enable', dbUp, auth, async (req, res) => {
-  try {
-    const step = checkTotp(req.user, req.body.code);
-
-    if (!step) {
-      return res.status(400).json({
-        error: 'That code is not correct. Try the newest code.'
+    if (wait > 0) {
+      return res.status(429).json({
+        error: 'Please wait ' + wait + ' seconds before asking for a new code.'
       });
     }
 
-    req.user.twoFactorEnabled = true;
-    req.user.twoFactorLastStep = step;
-    await req.user.save();
-
-    res.json({ ok: true });
-
-  } catch (err) {
-    console.error('2FA enable error:', err.message);
-    res.status(500).json({ error: 'Could not turn on two-step login.' });
-  }
-});
-
-// TWO-FACTOR: turning it off needs the password AND a current code
-router.post('/2fa/disable', dbUp, auth, async (req, res) => {
-  try {
-    const passwordOk = await bcrypt.compare(
-      String(req.body.password || ''),
-      req.user.passwordHash
-    );
-    const step = checkTotp(req.user, req.body.code);
-
-    if (!req.user.twoFactorEnabled || !passwordOk || !step) {
-      return res.status(401).json({
-        error: 'Wrong password or code.'
-      });
+    try {
+      await sendLoginOtp(user, 'login');
+    } catch (mailErr) {
+      console.error('Email error:', mailErr.message);
+      return res.status(502).json({ error: 'Could not send the email.' });
     }
 
-    req.user.twoFactorEnabled = false;
-    req.user.twoFactorSecret = '';
-    req.user.twoFactorLastStep = 0;
-    await req.user.save();
-
-    res.json({ ok: true });
+    res.json({ ok: true, email: maskEmail(user.email) });
 
   } catch (err) {
-    console.error('2FA disable error:', err.message);
-    res.status(500).json({ error: 'Could not turn off two-step login.' });
+    console.error('Email code error:', err.message);
+    res.status(500).json({ error: 'Could not send the code.' });
   }
 });
 
