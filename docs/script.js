@@ -9,6 +9,7 @@
    ===================================================================== */
 
 // Banana Mystery Vault - game logic (pages, puzzles, timer, sound, login, MongoDB sync)
+console.info('Banana Mystery Vault front-end v4: email code login (demo mode when there is no server)');
 // Image path configuration
 const IMG2={
     land:"images/land.jpg",
@@ -412,7 +413,7 @@ const pages={
                     :''
                 }
             </div>
-            ${S.api?securityCard(u):''}
+            ${(S.api||u.email)?securityCard(u):''}
         `;
     },
     
@@ -976,6 +977,9 @@ const loginCodeStep=()=>{
             </p>
             ${t.practice?`<div class="note-warn">⚠ Practice mode: no email was sent.
                 The code is printed in the server terminal.</div>`:''}
+            ${t.demo?`<div class="note-warn">🧪 Demo mode (no server): an email cannot be sent,
+                so your code is shown here: <b>${t.demo.code}</b><br>
+                On the real server the code is emailed.</div>`:''}
             ${otpBoxes()}
             <button class="wide" onclick="login2fa()">
                 ✔ Verify and Login
@@ -996,7 +1000,7 @@ pages.login=()=>S.granted?grantedStep():S.tf?loginCodeStep():S.vf?verifyStep():`
     <section class="scene" ${bg(0,IMG2.login)}>
         <div class="gc">
             <img class="crest" src="${IMG2.crest}" alt="">
-            ${S.api?stepsHTML(1):''}
+            ${stepsHTML(1)}
             <h2 class="script">Welcome Back!</h2>
             <p style="margin:0 0 8px">
                 Login to continue your adventure
@@ -1048,7 +1052,7 @@ pages.register = () => S.vf ? verifyStep() : `
 
             ${fld('👤', 'un', 'Username', 'text')}
 
-            ${S.api?fld('✉️', 'em', 'Email address', 'email'):''}
+            ${fld('✉️', 'em', 'Email address', 'email')}
 
             <!-- Explorer ID card preview + avatar picker -->
             <div class="idprev">
@@ -2217,6 +2221,11 @@ function ensurePreviewId(){
 // Handles player login.
 /* ---------- Email verification at sign-up ---------- */
 
+// "alex@gmail.com" -> "a***@gmail.com"
+const maskEm=e=>String(e||'').replace(/^(.)[^@]*(@.*)$/,'$1***$2');
+// A random 6-digit code for DEMO mode (no server, so nothing can be emailed)
+const demoCode=()=>String(R(100000,999999));
+
 // Simple email check (same rule as the server)
 const EMAIL_OK=e=>/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(e)&&e.length<=254;
 
@@ -2237,6 +2246,9 @@ const verifyStep=()=>`
             `:''}
             ${S.vf.practice?`<div class="note-warn">⚠ Practice mode: no email was sent.
                 The code is printed in the server terminal.</div>`:''}
+            ${S.vf.demo?`<div class="note-warn">🧪 Demo mode (no server): an email cannot be sent,
+                so your code is shown here: <b>${S.vf.demo.code}</b><br>
+                On the real server the code is emailed.</div>`:''}
             <p style="margin:0 0 8px">
                 ${S.vf.fromLogin
                     ?`Your email is not verified yet.<br>Press “Send a new code”, then check <b>${S.vf.email}</b>`
@@ -2269,6 +2281,30 @@ async function verifyEmail(){
     const code=($('vcode').value||'').replace(/\s/g,'');
     if(!/^\d{6}$/.test(code))
         return toast('Enter the 6-digit code.','bad');
+    if(S.vf.demo){                                   // DEMO mode: check the code here
+        const d=S.vf.demo;
+        if(Date.now()>d.sentAt+600000)
+            return toast('That code has expired. Press Send a new code.','bad');
+        if(code!==d.code)
+            return toast('Wrong code.','bad');
+        const v=S.vf,key=v.u.toLowerCase();
+        DB.users[key]={
+            username:v.u,name:v.u,key,
+            explorerId:v.explorerId,
+            avatar:v.avatar,
+            joined:Date.now(),
+            pw:btoa(v.pw),
+            email:d.email,
+            coins:20,lives:3,score:0,hints:1,
+            keys:[],unlocked:1,done:[]
+        };
+        DB.cur=key;
+        save();
+        S.vf=null;
+        S.msg='';
+        go('dashboard');
+        return render();
+    }
     try{
         const{ok,d}=await apiPost('/api/verify-email',{
             username:S.vf.u,
@@ -2286,6 +2322,15 @@ async function verifyEmail(){
 
 // Asks the server to email a new code
 async function resendCode(){
+    if(S.vf.demo){                                   // DEMO mode: make a new code here
+        const wait=Math.ceil((S.vf.demo.sentAt+60000-Date.now())/1000);
+        if(wait>0)
+            return toast(`Please wait ${wait} seconds before asking for a new code.`,'bad');
+        S.vf.demo.code=demoCode();
+        S.vf.demo.sentAt=Date.now();
+        render();
+        return toast('A new demo code was made ✉️','good');
+    }
     try{
         const{ok,d}=await apiPost('/api/resend-code',{
             username:S.vf.u,
@@ -2317,10 +2362,11 @@ const securityCard=u=>`
         <h3 style="margin-top:0">Two-factor authentication</h3>
         <small>Every login needs a one-time code from your email.</small>
         <h4 class="sec-h">📧 Email code</h4>
-        ${u.hasEmail
+        ${(u.hasEmail||u.email)
             ?`<p>🔒 <b class="good">Always on.</b> After your password, the platform sends a
-               temporary one-time code to your registered email address (<b>${u.emailMasked||''}</b>).
-               The code works for 5 minutes, and you must type it to enter the game.</p>`
+               temporary one-time code to your registered email address (<b>${u.emailMasked||maskEm(u.email)}</b>).
+               The code works for 5 minutes, and you must type it to enter the game.
+               ${S.api?'':'<br><small>🧪 Demo mode: without the server the code is shown on the screen.</small>'}</p>`
             :`<p>This account has no email address, so email codes are not available.</p>`}
     </div>
 `;
@@ -2348,6 +2394,21 @@ async function login2fa(){
     S.verifying=true;
     toast('Checking the code…','good');
     try{
+        if(S.tf.demo){                               // DEMO mode: check the code here
+            const t=S.tf;
+            if(Date.now()>t.sentAt+300000){
+                toast('That code has expired. Press Resend code.','bad');
+                return otpClear();
+            }
+            if(code!==t.demo.code){
+                t.demo.tries=(t.demo.tries||0)+1;
+                toast(t.demo.tries>=5
+                    ?'Too many wrong codes. Press Resend code.'
+                    :'Wrong code. '+(5-t.demo.tries)+' tries left.','bad');
+                return otpClear();
+            }
+            return showGranted(DB.users[t.demo.key]);   // Step 3: Access granted
+        }
         const{ok,d}=await apiPost('/api/login',{
             username:S.tf.u,
             password:S.tf.pw,
@@ -2367,6 +2428,17 @@ async function login2fa(){
 
 // Asks the server to email a login code (needs the password again)
 async function useEmailCode(){
+    if(S.tf.demo){                                   // DEMO mode: make a new code here
+        const wait=Math.ceil((S.tf.sentAt+60000-Date.now())/1000);
+        if(wait>0)
+            return toast(`Please wait ${wait} seconds before asking for a new code.`,'bad');
+        S.tf.demo.code=demoCode();
+        S.tf.demo.tries=0;
+        S.tf.sentAt=Date.now();
+        S.msg='';
+        render();
+        return toast('A new demo code was made ✉️','good');
+    }
     try{
         const{ok,d}=await apiPost('/api/login/email-code',{
             username:S.tf.u,
@@ -2442,6 +2514,19 @@ async function login(){
                      // Checks whether the player exists and the password matches.
                      if(!x||x.pw!==btoa(pw))
                         return toast('Invalid username or password.','bad');
+                    // DEMO mode (no server): accounts with an email get step 2, and the
+                    // code is shown on the screen because nothing can be emailed.
+                    if(x.email){
+                        S.tf={
+                            u,pw,
+                            email:maskEm(x.email),
+                            sent:true,
+                            sentAt:Date.now(),
+                            demo:{code:demoCode(),key}
+                        };
+                        S.msg='';
+                        return render();
+                    }
                     DB.cur=key; // Sets the current logged-in player.
                     save();
                     S.msg=''; // Clears previous messages.
@@ -2539,8 +2624,8 @@ async function register(){
                 'bad'
             );
     // Email address (needed only when the server is running)
-    const em=S.api?($('em').value||'').trim():'';
-    if(S.api&&!EMAIL_OK(em))
+    const em=($('em').value||'').trim();
+    if(!EMAIL_OK(em))
         return toast('Please enter a valid email address.','bad');
 
     if(p.length<8)
@@ -2590,29 +2675,17 @@ async function register(){
         if(DB.users[key])
             return toast('That username is taken.','bad');
 
-            // Creates a new player account using local data.
-            DB.users[key]={
-                username:u,
-                name:u,
-                key,
+            // DEMO mode (no server): an email cannot be sent, so the sign-up code is
+            // shown on the screen. The account is made after the code is typed.
+            S.vf={
+                u,pw:p,
+                email:maskEm(em),
                 explorerId:S.preId||newId(),
                 avatar:S.av|0,
-                joined:Date.now(),
-                pw:btoa(p),
-                coins:20,
-                lives:3,
-                score:0,
-                hints:1,
-                keys:[],
-                unlocked:1,
-                done:[]
+                demo:{code:demoCode(),sentAt:Date.now(),email:em}
             };
-            DB.cur=key;  // Sets the new player as the current player.
             S.preId=null;
-            save(); // Saves the player information
-            
-            // Navigates to the dashboard.
-            go('dashboard');
+            S.msg='';
             render();
         }
     
