@@ -881,9 +881,10 @@ function otpSync(){
 // Typing a digit moves on to the next box
 function otpIn(el){
     el.value=el.value.replace(/\D/g,'').slice(-1);
-    otpSync();
+    const v=otpSync();
     const n=el.nextElementSibling;
     if(el.value&&n&&n.classList.contains('otp-box'))n.focus();
+    if(v.length===6)login2fa();     // all six digits typed: verify automatically
 }
 // Backspace goes back, Enter verifies, arrows move
 function otpKey(e,el){
@@ -901,7 +902,22 @@ function otpPaste(e){
     bs.forEach((b,i)=>b.value=d[i]||'');
     otpSync();
     (bs[Math.min(d.length,5)]||bs[0]).focus();
+    if(d.length===6)login2fa();     // pasted a full code: verify automatically
 }
+// Every second: the Resend button waits 60 s, and the code expires after 5 minutes
+function otpTick(){
+    const t=S.tf,btn=$('resendBtn'),clock=$('otpClock');
+    if(!t||!btn){clearInterval(S.otpTimer);S.otpTimer=null;return}
+    const now=Date.now(),
+    wait=t.sentAt?Math.max(0,Math.ceil((t.sentAt+60000-now)/1000)):0,
+    left=t.sentAt?Math.max(0,Math.ceil((t.sentAt+300000-now)/1000)):0;
+    btn.disabled=wait>0;
+    btn.textContent=wait>0?`↻ Resend code (${wait}s)`:'↻ Resend code';
+    if(clock)clock.textContent=!t.sentAt?'The code works for 5 minutes'
+        :left>0?`Code expires in ${fmt(left)}`
+        :'Code expired. Press Resend code.';
+}
+
 // Empties the boxes (after a wrong code)
 function otpClear(){
     otpBoxList().forEach(b=>b.value='');
@@ -958,17 +974,19 @@ const loginCodeStep=()=>{
                     ?`Verification code sent to your registered email<br><b>${t.email}</b>`
                     :`Press “Resend code” to get a verification code at<br><b>${t.email}</b>`}
             </p>
+            ${t.practice?`<div class="note-warn">⚠ Practice mode: no email was sent.
+                The code is printed in the server terminal.</div>`:''}
             ${otpBoxes()}
             <button class="wide" onclick="login2fa()">
                 ✔ Verify and Login
             </button>
-            <button class="ghost wide" onclick="useEmailCode()">
+            <button class="ghost wide" id="resendBtn" onclick="useEmailCode()">
                 ↻ Resend code
             </button>
             <button class="ghost wide" onclick="cancel2fa()">
                 ← Back
             </button>
-            <small>The code works for 5 minutes</small>
+            <small id="otpClock">The code works for 5 minutes</small>
             <div class="msg" id="msg">${S.msg}</div>
         </div>
     </section>
@@ -983,7 +1001,7 @@ pages.login=()=>S.granted?grantedStep():S.tf?loginCodeStep():S.vf?verifyStep():`
             <p style="margin:0 0 8px">
                 Login to continue your adventure
             </p>
-            ${fld('👤','un','Username','text')}
+            ${fld('👤','un','Username','text',`onkeydown="if(event.key=='Enter'){event.preventDefault();$('pw').focus()}"`)}
             ${fld(
                 '🔒',
                 'pw',
@@ -2217,6 +2235,8 @@ const verifyStep=()=>`
                     </div>
                 </div>
             `:''}
+            ${S.vf.practice?`<div class="note-warn">⚠ Practice mode: no email was sent.
+                The code is printed in the server terminal.</div>`:''}
             <p style="margin:0 0 8px">
                 ${S.vf.fromLogin
                     ?`Your email is not verified yet.<br>Press “Send a new code”, then check <b>${S.vf.email}</b>`
@@ -2274,6 +2294,8 @@ async function resendCode(){
         if(!ok)
             return toast(d.error||'Could not send a new code.','bad');
         S.vf.fromLogin=false;
+        S.vf.practice=!!d.practice;
+        render();
         toast('A new code was sent ✉️','good');
     }catch(x){
         toast('Could not reach the server.','bad')
@@ -2319,9 +2341,12 @@ function finishLogin(user){
 
 // Second login step: sends the password again together with the 6-digit code.
 async function login2fa(){
+    if(S.verifying)return;                       // a check is already running
     const code=(($('code')&&$('code').value)||'').replace(/\s/g,'');
     if(!/^\d{6}$/.test(code))
         return toast('Enter the 6-digit code.','bad');
+    S.verifying=true;
+    toast('Checking the code…','good');
     try{
         const{ok,d}=await apiPost('/api/login',{
             username:S.tf.u,
@@ -2335,6 +2360,8 @@ async function login2fa(){
         showGranted(d.user);   // Step 3: Access granted
     }catch(x){
         toast('Could not reach the server.','bad')
+    }finally{
+        S.verifying=false;
     }
 }
 
@@ -2348,6 +2375,8 @@ async function useEmailCode(){
         if(!ok)
             return toast(d.error||'Could not send the code.','bad');
         S.tf.sent=true;
+        S.tf.sentAt=Date.now();
+        S.tf.practice=!!d.practice;
         S.tf.email=d.email||S.tf.email;
         S.msg='';
         render();
@@ -2394,7 +2423,9 @@ async function login(){
                             S.tf={
                                 u,pw,
                                 email:d.email||'',
-                                sent:!!d.sent
+                                sent:!!d.sent,
+                                sentAt:d.sent?Date.now():0,   // for the live countdowns
+                                practice:!!d.practice
                             };
                             S.msg='';
                             return render();
@@ -2543,7 +2574,7 @@ async function register(){
                 );
                 // The server emailed a code: ask for it before the account is active.
                 if(d.verify){
-                    S.vf={u,pw:p,email:d.email,explorerId:d.explorerId,avatar:d.avatar};
+                    S.vf={u,pw:p,email:d.email,explorerId:d.explorerId,avatar:d.avatar,practice:!!d.practice};
                     S.preId=null;
                     S.msg='';
                     return render();
@@ -2656,6 +2687,12 @@ function render(){
     if(f&&innerWidth>700)f.focus();
     const ob=document.querySelector('.otp-box');
     if(ob&&innerWidth>700)ob.focus();
+
+    // Login code screen: live countdowns
+    if(p=='login'&&S.tf&&ob){
+        otpTick();
+        if(!S.otpTimer)S.otpTimer=setInterval(otpTick,1000);
+    }
 
     // Register page: show the unique Explorer ID
     if(p=='register'&&!S.vf)ensurePreviewId();

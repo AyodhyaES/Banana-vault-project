@@ -5,36 +5,30 @@ Solve banana puzzles, collect keys and coins, and open the story vaults.
 
 Built with HTML5, CSS3, JavaScript, Node.js, Express.js and MongoDB.
 
-**Module:** CIS046-3 Software for Enterprise (AY 26/27)
-**Student:** Ayodhya Eishani Senarathna Lakmana Arachchige (2623053)
-
+**Module:** CIS046-3 Software for Enterprise
 **Live front-end:** https://ayodhyaes.github.io/Banana-vault-project/
 
-> **Note:** the GitHub Pages link shows the front-end only. It cannot run the
-> server or the database, so it uses local practice puzzles and keeps accounts
-> in the browser only. For the full game (Banana API puzzles, MongoDB accounts
-> and the shared leaderboard) run the project locally as described below.
+> The GitHub Pages link shows the front-end only. It cannot run the server or the database,
+> so it uses local practice puzzles and keeps accounts in the browser only.
+> For the full game (Banana API puzzles, email codes, MongoDB accounts) run it locally.
 
 ---
 
 ## ✨ Features
 
-- Username and password registration and login
-- Secure password hashing with bcrypt
-- Login session with a signed JWT in an httpOnly cookie (7 days)
-- Unique Explorer ID, avatar selection and badges
-- Three adventure levels
-- Live Banana API puzzles (the server keeps the solution secret)
-- Local practice puzzles (Six Equations) when the API is unavailable
-- 45-second timer for each puzzle, with best times for each level
-- Coins, lives, hints and collectible keys
-- Story Vault Boxes with a special bonus (free hint, extra life or 500 points)
-- Vault PIN made from the solved puzzle answers, entered automatically
-- Banana win sound (Web Audio API) with falling bananas, and a sound on/off button
-- Player progress saved in MongoDB
-- Leaderboard (username, avatar, Explorer ID, vaults completed and score)
-- Sign-up limit: 10 attempts per IP number in 10 minutes
-- Responsive design for phones and computers
+- Register with a username, **email address**, password and an **avatar**; every player gets a **unique Explorer ID** (for example `BMV-48213`)
+- **Email verification at sign-up** (a 6-digit code is emailed before the account works)
+- **Email-based two-factor login** in 3 steps:
+  1. **Login** with username and password
+  2. **Email verification**: a random 6-digit one-time code (valid 5 minutes) is emailed to the registered address
+  3. **Access granted**: the login token (JWT, httpOnly cookie, 7 days) is given only after the right code
+- Automatic code check when the 6th digit is typed, a "Resend code" button with a countdown, and a code expiry clock
+- Passwords hashed with bcrypt; codes stored scrambled; limits on attempts and resend requests
+- Live **Banana API** puzzles (the server keeps the solution secret) and local practice puzzles when the API is down
+- 45-second timer for every puzzle, best times, coins, lives, hints and keys
+- Story Vault Boxes, a vault PIN made from the solved answers, and badges earned by clearing vaults
+- Leaderboard, sound effects with the **Web Audio API**
+- The puzzle and the countdown fit on one screen (phones and computers)
 
 ---
 
@@ -42,35 +36,39 @@ Built with HTML5, CSS3, JavaScript, Node.js, Express.js and MongoDB.
 
 | API | Where | What it does |
 | --- | --- | --- |
-| **Banana API** — https://marcconrad.com/uob/banana/doc.php | Server (`banana.js`) | Gives a puzzle image and its solution digit. The server stores the solution and sends the browser only `{ id, imageUrl }`. The answer is checked on the server. |
-| **Web Audio API** | Browser (`script.js`) | `AudioContext`, oscillators and gain nodes create the banana win sound and the other sound effects. |
+| **Banana API** https://marcconrad.com/uob/banana/doc.php | Server (`banana.js`) | Gives a puzzle picture and its solution. The browser only gets `{ id, imageUrl }`; the answer is checked on the server. |
+| **Web Audio API** | Browser (`script.js`) | Makes the banana win sound and other sound effects in code. |
+| **SMTP** (Nodemailer) | Server (`mailer.js`) | Sends the sign-up and login codes by email. |
 
-### REST routes of this project
+### REST routes
 
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/puzzle` | GET | New Banana puzzle (`id` and `imageUrl` only) |
-| `/api/answer` | POST | Check an answer (`id`, `answer`) |
-| `/api/hint?id=...` | GET | Hint (odd/even and a half-range, never the digit) |
-| `/api/register` | POST | Create an account |
-| `/api/login` | POST | Log in |
+| `/api/answer` | POST | Check an answer |
+| `/api/hint?id=...` | GET | Hint (never the digit) |
+| `/api/explorer-id` | GET | A free Explorer ID to show on the register page |
+| `/api/register` | POST | Create an account and email the sign-up code |
+| `/api/verify-email` | POST | Confirm the sign-up code |
+| `/api/resend-code` | POST | New sign-up code |
+| `/api/login` | POST | Step 1 (password) and step 2 (email code) |
+| `/api/login/email-code` | POST | "Resend code" for the login code |
 | `/api/logout` | POST | Log out (clears the cookie) |
 | `/api/me` | GET | Current player |
 | `/api/progress` | PUT | Save player progress |
 | `/api/leaderboard` | GET | Top players |
 | `/api/health` | GET | Server and database status |
 
----
+### Limits
 
-## 🛠️ Technologies
-
-- HTML5, CSS3, JavaScript
-- Node.js (**18 or newer**) and Express.js
-- MongoDB and Mongoose
-- Banana API and Web Audio API
-- bcryptjs (password hashing)
-- jsonwebtoken (JWT) and cookie-parser
-- dotenv (environment variables)
+| What | Limit |
+| --- | --- |
+| Login code lifetime | 5 minutes, works once |
+| Wrong tries for one code | 5, then a new code is needed |
+| Resend code | once per 60 seconds per account |
+| Sign-up | 10 attempts per IP in 10 minutes |
+| Login | 15 attempts per IP in 10 minutes |
+| Resend requests | 5 per IP in 10 minutes |
 
 ---
 
@@ -78,26 +76,27 @@ Built with HTML5, CSS3, JavaScript, Node.js, Express.js and MongoDB.
 
 ```
 Banana-vault-project/
-├── server.js        Express server, Banana puzzle routes, sign-up limit
-├── auth.js          Register, login, progress and leaderboard routes
+├── server.js        Express server, Banana puzzle routes, attempt limits
+├── auth.js          Register, email codes, login, progress, leaderboard
+├── mailer.js        Sends the emails with Nodemailer and explains problems
 ├── banana.js        Banana API helper (solutions stay on the server)
 ├── db.js            MongoDB connection and Player model
-├── public/          Front-end served by the server
-│   ├── index.html
-│   ├── style.css
-│   ├── script.js
-│   └── images/
+├── test-email.js    Sends one test email
 ├── .env.example     Example settings (copy to .env)
-└── package.json
+└── public/          Front-end served by the server
+    ├── index.html
+    ├── style.css
+    ├── script.js
+    └── images/
 ```
 
-A copy of the front-end files is kept in the repository root for GitHub Pages.
+A copy of the front-end files is kept for GitHub Pages.
 
 ---
 
-## 🚀 Installation and setup
+## 🚀 Setup
 
-### 1. Clone the repository
+Needs **Node.js 18 or newer** and **MongoDB**.
 
 ```bash
 git clone https://github.com/AyodhyaES/Banana-vault-project.git
@@ -110,95 +109,63 @@ cd Banana-vault-project
 npm install
 ```
 
-If packages are missing, install them directly:
+If packages are missing:
 
 ```bash
-npm install express dotenv cookie-parser bcryptjs jsonwebtoken mongoose
+npm install express dotenv cookie-parser bcryptjs jsonwebtoken mongoose nodemailer
 ```
 
-### 3. Configure environment variables
+### Settings (`.env`)
 
-Copy `.env.example` to `.env`.
-
-Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Mac/Linux:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
+Copy `.env.example` to `.env` (PowerShell: `Copy-Item .env.example .env`) and fill it in:
 
 ```env
 PORT=3000
 MONGODB_URI=mongodb://127.0.0.1:27017/banana_vault
-JWT_SECRET=your_private_secret
+JWT_SECRET=change_this_to_a_long_random_text
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=yourname@gmail.com
+SMTP_PASS=abcdefghijklmnop
+MAIL_FROM="Banana Mystery Vault <yourname@gmail.com>"
 ```
 
-Use your own long, random JWT secret. **Never upload `.env` to GitHub.**
+**Never upload `.env` to GitHub.**
 
-### 4. Configure MongoDB
+For Gmail: turn on 2-Step Verification, then make an **App password** (Google Account, Security) and write the 16 letters in `SMTP_PASS` without spaces. Your normal Gmail password does not work.
 
-Use MongoDB Community Server locally, or MongoDB Atlas with your own
-connection string in `MONGODB_URI`.
-
-### 5. Start the application
+### Start
 
 ```bash
-npm start
+node server.js
 ```
 
-This runs `node server.js`. Open the game at:
+Open http://localhost:3000. The terminal shows one of these lines about email:
 
-http://localhost:3000
+- `[EMAIL] Ready - emails are sent as ...` the 6-digit codes are really emailed
+- `[EMAIL] PRACTICE MODE ... Missing: ...` no email settings: **no email is sent, the code is printed in the terminal**
+- `[EMAIL] Cannot use the email server: ...` the settings are wrong; the message says what to fix
 
-Check the server and database connection at:
-
-http://localhost:3000/api/health
-
-Expected response:
-
-```json
-{ "ok": true, "db": true }
-```
-
----
-
-## 🔒 Security notes
-
-- Passwords are hashed with bcrypt and never stored as plain text.
-- The login token is a signed JWT in an httpOnly cookie that lasts 7 days.
-- Banana puzzle solutions stay on the server; the browser never receives them.
-- Sign-up attempts are limited to 10 per IP number in 10 minutes. IP numbers
-  are kept only in memory for that time and are not saved to the database.
-- Ideas for the future: check every reward on the server to stop cheating,
-  and a shared online leaderboard with more players.
+Send one test email: `node test-email.js your@email.com`
 
 ---
 
 ## 🧰 Troubleshooting
 
-**`EADDRINUSE` / port 3000 already in use** — an old server is still running.
-Stop it with `Ctrl + C` in its terminal, or on Windows run:
+**The 6-digit code does not arrive**
+1. Read the server terminal. In practice mode the code is printed there.
+2. Run `node test-email.js your@email.com` and read the message.
+3. Check the spam folder. Edited `.env`? Stop the server (`Ctrl + C`) and start it again.
 
-```powershell
-taskkill /IM node.exe /F
-```
+**`EADDRINUSE` (port 3000 already in use)** Stop the old server with `Ctrl + C`, or on Windows run `taskkill /IM node.exe /F`.
 
-Then start the server again.
+**`Database not connected`** Start MongoDB and check `MONGODB_URI`.
 
-**`fetch is not defined`** — update Node.js to version 18 or newer.
-
-**"Database not connected"** — start MongoDB and check `MONGODB_URI` in `.env`.
+**`fetch is not defined`** Update Node.js to version 18 or newer.
 
 ---
 
 ## 🙏 Credits
 
-Puzzles from the **Banana API** by Marc Conrad:
-https://marcconrad.com/uob/banana/doc.php
+Puzzles from the **Banana API** by Marc Conrad: https://marcconrad.com/uob/banana/doc.php

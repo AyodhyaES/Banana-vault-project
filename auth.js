@@ -120,7 +120,7 @@ const sendNewCode = async user => {
   user.emailCodeSentAt = Date.now();
   await user.save();
 
-  await mailer.sendCode(user.email, user.username, code, CODE_MINUTES);
+  return (await mailer.sendCode(user.email, user.username, code, CODE_MINUTES)) || { sent: true };
 };
 
 // ---------- Email code as a second login step (another two-factor option) ----------
@@ -134,7 +134,7 @@ const sendLoginOtp = async (user, purpose) => {
   user.emailOtpSentAt = Date.now();
   await user.save();
 
-  await mailer.sendCode(user.email, user.username, code, OTP_MINUTES, purpose);
+  return (await mailer.sendCode(user.email, user.username, code, OTP_MINUTES, purpose)) || { sent: true };
 };
 
 // Seconds still to wait before another code can be sent (0 = can send now)
@@ -188,6 +188,9 @@ const freeExplorerId = async () => {
   } while (await User.exists({ explorerId: id }));
   return id;
 };
+
+// true when the code was only printed in the server terminal (email not set up)
+const isPractice = mail => !!(mail && mail.sent === false);
 
 // Finds a player by username and checks the password (null if wrong).
 const findWithPassword = async body => {
@@ -260,19 +263,21 @@ router.post('/register', dbUp, async (req, res) => {
       avatar
     });
 
+    let mail;
     try {
-      await sendNewCode(user);
+      mail = await sendNewCode(user);
     } catch (mailErr) {
       console.error('Email error:', mailErr.message);
       await User.deleteOne({ _id: user._id });   // so the player can try again
       return res.status(502).json({
-        error: 'Could not send the email. Check the address and try again.'
+        error: 'Could not send the email. The server terminal shows the reason.'
       });
     }
 
     // No session cookie yet: the player must verify the email first.
     res.status(201).json({
       verify: true,
+      practice: isPractice(mail),
       email: maskEmail(email),
       explorerId: user.explorerId,    // public (also shown on the leaderboard)
       avatar: user.avatar
@@ -398,14 +403,17 @@ router.post('/resend-code', dbUp, async (req, res) => {
       });
     }
 
+    let mail;
     try {
-      await sendNewCode(user);
+      mail = await sendNewCode(user);
     } catch (mailErr) {
       console.error('Email error:', mailErr.message);
-      return res.status(502).json({ error: 'Could not send the email.' });
+      return res.status(502).json({
+        error: 'Could not send the email. The server terminal shows the reason.'
+      });
     }
 
-    res.json({ ok: true, email: maskEmail(user.email) });
+    res.json({ ok: true, practice: isPractice(mail), email: maskEmail(user.email) });
 
   } catch (err) {
     console.error('Resend error:', err.message);
@@ -445,10 +453,10 @@ router.post('/login', dbUp, async (req, res) => {
 
       if (!code) {
         // Step 2 starts: no session yet. The OTP is emailed right now.
-        let sent = false;
+        let sent = false, practice = false;
         if (otpWait(user) === 0) {
           try {
-            await sendLoginOtp(user, 'login');
+            practice = isPractice(await sendLoginOtp(user, 'login'));
             sent = true;
           } catch (mailErr) {
             console.error('Email error:', mailErr.message);
@@ -457,7 +465,8 @@ router.post('/login', dbUp, async (req, res) => {
         return res.json({
           twoFactor: true,
           email: maskEmail(user.email),
-          sent
+          sent,
+          practice
         });
       }
 
@@ -512,14 +521,17 @@ router.post('/login/email-code', dbUp, async (req, res) => {
       });
     }
 
+    let mail;
     try {
-      await sendLoginOtp(user, 'login');
+      mail = await sendLoginOtp(user, 'login');
     } catch (mailErr) {
       console.error('Email error:', mailErr.message);
-      return res.status(502).json({ error: 'Could not send the email.' });
+      return res.status(502).json({
+        error: 'Could not send the email. The server terminal shows the reason.'
+      });
     }
 
-    res.json({ ok: true, email: maskEmail(user.email) });
+    res.json({ ok: true, practice: isPractice(mail), email: maskEmail(user.email) });
 
   } catch (err) {
     console.error('Email code error:', err.message);

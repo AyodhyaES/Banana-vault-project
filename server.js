@@ -93,11 +93,13 @@ app.get('/api/hint', (req, res) => {  //The frontend requests a hint using the p
   res.json({ hint: h });
 });
 
-//Starting the server
-app.listen(
-  process.env.PORT || 3000,
-  () => console.log(
-    'Banana Mystery Vault on http://localhost:' + 
-     (process.env.PORT || 3000)
-  )
-);
+// Starting the server
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => {
+  console.log(
+    `Banana Mystery Vault on http://localhost:${PORT}`
+  );
+
+  console.log('Authentication routes loaded.');
+});
